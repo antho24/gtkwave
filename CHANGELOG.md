@@ -37,6 +37,8 @@ of these features.
 - Added `dbl_mant_dig_overrides` rc environment variable.
 - Added `disable_antialiasing` rc variable.
 - Added `editor_run_in_terminal` rc variable.
+- VHDL records (e.g. in FST files written by NVC) are listed in the signals pane and are
+  added as collapsible groups with nested records as nested groups.
 
 ### Removed
 

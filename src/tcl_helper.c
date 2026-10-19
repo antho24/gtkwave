@@ -1919,6 +1919,11 @@ char *add_dnd_from_tree_window(void)
 {
     struct iter_dnd_strings it;
 
+    char *records = add_dnd_records_from_tree_window();
+    if (records != NULL) {
+        return records;
+    }
+
     memset(&it, 0, sizeof(struct iter_dnd_strings));
     gtk_tree_selection_selected_foreach(GLOBALS->sig_selection_treesearch_gtk2_c_1,
                                         &sig_selection_foreach_dnd,

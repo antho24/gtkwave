@@ -42,4 +42,6 @@ enum
 
 void action_callback(enum sst_cb_action action);
 
+char *add_dnd_records_from_tree_window(void);
+
 #endif

@@ -124,6 +124,13 @@ char *varxt_fix(char *s)
 }
 
 /* Fill the store model using current SIG_ROOT and FILTER_STR.  */
+/* Is T a VHDL record scope (e.g. as dumped by NVC)?  */
+static gboolean is_record_scope(GwTreeNode *t)
+{
+    return t != NULL && t->t_which < 0 && t->child != NULL &&
+           t->kind == GW_TREE_KIND_VHDL_ST_RECORD;
+}
+
 void fill_sig_store(void)
 {
     GwTreeNode *t;
@@ -156,6 +163,27 @@ void fill_sig_store(void)
 
         if (i < 0) {
             t_prev = NULL;
+
+            /* records are listed so that they can be added as a whole */
+            if (is_record_scope(t) && ((GLOBALS->filter_str_treesearch_gtk2_c_1 == NULL) ||
+                                       ((!GLOBALS->filter_noregex_treesearch_gtk2_c_1) &&
+                                        (!GLOBALS->filter_matlen_treesearch_gtk2_c_1) &&
+                                        wave_regex_match(t->name, WAVE_REGEX_TREE)))) {
+                gtk_list_store_prepend(GLOBALS->sig_store_treesearch_gtk2_c_1, &iter);
+                gtk_list_store_set(GLOBALS->sig_store_treesearch_gtk2_c_1,
+                                   &iter,
+                                   NAME_COLUMN,
+                                   t->name,
+                                   TREE_COLUMN,
+                                   t,
+                                   TYPE_COLUMN,
+                                   "record",
+                                   DIR_COLUMN,
+                                   "",
+                                   DTYPE_COLUMN,
+                                   "record",
+                                   -1);
+            }
             continue;
         }
 
@@ -835,6 +863,198 @@ int treebox_is_active(void)
 /* Callback for insert/replace/append buttions.
    This call-back is called for every signal selected.  */
 
+/* Adds facility I to the traces (coalescing vectors if enabled).  */
+static void add_fac(GwFacs *facs, gint i)
+{
+    GwSymbol *s = gw_facs_get(facs, i);
+    GwSymbol *t = s->vec_root;
+    if ((t) && (GLOBALS->autocoalesce)) {
+        if (get_s_selected(t)) {
+            int len = 0;
+            set_s_selected(t, 0);
+            while (t) {
+                len++;
+                t = t->vec_chain;
+            }
+            if (len)
+                add_vector_chain(s->vec_root, len);
+        }
+    } else {
+        AddNode(s->n, NULL);
+    }
+}
+
+/*
+ * VHDL record support: a record scope (e.g. as dumped by NVC) is added as a
+ * closed group named after the record, containing its fields (in declaration
+ * order for FST files) with their hierarchy stripped.  Nested records become
+ * nested groups.
+ */
+
+static gboolean tree_has_record_scope(GwTreeNode *t)
+{
+    for (; t != NULL; t = t->next) {
+        if (is_record_scope(t) || (t->t_which < 0 && tree_has_record_scope(t->child))) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* Declaration order key of a subtree: the FST loader allocates all nodes in a
+   single block in declaration order, so the lowest node address of all signals
+   in the subtree orders it relative to its siblings.  */
+static guintptr record_decl_key(GwFacs *facs, GwTreeNode *t)
+{
+    if (t->t_which >= 0) {
+        return (guintptr)gw_facs_get(facs, t->t_which)->n;
+    }
+
+    guintptr key = 0;
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        guintptr k = record_decl_key(facs, c);
+        if (k != 0 && (key == 0 || k < key)) {
+            key = k;
+        }
+    }
+    return key;
+}
+
+typedef struct
+{
+    GwTreeNode *t;
+    guintptr key;
+} SortedTreeNode;
+
+static int sorted_tree_node_cmp(const void *v1, const void *v2)
+{
+    const SortedTreeNode *n1 = v1;
+    const SortedTreeNode *n2 = v2;
+
+    return (n1->key > n2->key) - (n1->key < n2->key);
+}
+
+/* Returns the children of T which contain signals, sorted by declaration
+   order (DECL_ORDER) or by facility index.  Free with g_free().  */
+static SortedTreeNode *sort_tree_children(GwFacs *facs,
+                                          GwTreeNode *t,
+                                          gboolean decl_order,
+                                          gint *count)
+{
+    gint cnt = 0;
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        cnt++;
+    }
+
+    SortedTreeNode *nodes = g_new(SortedTreeNode, cnt + 1);
+    gint n = 0;
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        guintptr key;
+        if (decl_order) {
+            key = record_decl_key(facs, c);
+        } else {
+            gint which = fetchlow(c)->t_which;
+            key = which >= 0 ? (guintptr)which + 1 : 0;
+        }
+        if (key != 0) {
+            nodes[n].t = c;
+            nodes[n].key = key;
+            n++;
+        }
+    }
+
+    qsort(nodes, n, sizeof(SortedTreeNode), sorted_tree_node_cmp);
+
+    *count = n;
+    return nodes;
+}
+
+static void add_record_group_marker(const char *name, TraceFlagsType flags)
+{
+    TraceFlagsType default_flags = GLOBALS->default_flags;
+
+    GLOBALS->default_flags = flags;
+    AddBlankTrace((char *)name);
+    GLOBALS->default_flags = default_flags;
+}
+
+static void add_record_field(GwFacs *facs, GwTreeNode *t)
+{
+    GwTrace *last = GLOBALS->traces.last;
+    GwSymbol *s = gw_facs_get(facs, t->t_which);
+
+    add_fac(facs, t->t_which);
+
+    /* show the field name only, the enclosing group carries the hierarchy */
+    GwTrace *tr = GLOBALS->traces.last;
+    if (tr != NULL && tr != last && !tr->vector && tr->n.nd == s->n && tr->name_full == NULL) {
+        tr->name_full = strdup_2(t->name);
+        tr->name = tr->name_full;
+    }
+}
+
+static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
+{
+    gint n;
+    /* other loaders don't keep the declaration order, use the facility order */
+    gboolean decl_order = GW_IS_FST_FILE(GLOBALS->dump_file);
+    SortedTreeNode *fields = sort_tree_children(facs, t, decl_order, &n);
+
+    if (n > 0) {
+        add_record_group_marker(name, TR_GRP_BEGIN | TR_CLOSED);
+
+        for (gint i = 0; i < n; i++) {
+            GwTreeNode *c = fields[i].t;
+            if (c->t_which >= 0) {
+                add_record_field(facs, c);
+            } else {
+                add_record_group(facs, c, c->name);
+            }
+        }
+
+        add_record_group_marker(name, TR_GRP_END | TR_CLOSED | TR_COLLAPSED);
+    }
+
+    g_free(fields);
+}
+
+/* Like add_nodes() for the subtree of scope T, but adds the records it
+   contains as groups.  PREFIX is the hierarchical name of T including the
+   trailing delimiter.  */
+static void add_scope_with_records(GwFacs *facs, GwTreeNode *t, const char *prefix)
+{
+    gint n;
+    SortedTreeNode *children = sort_tree_children(facs, t, FALSE, &n);
+
+    for (gint i = 0; i < n; i++) {
+        GwTreeNode *c = children[i].t;
+        if (c->t_which >= 0) {
+            add_fac(facs, c->t_which);
+        } else if (is_record_scope(c)) {
+            gchar *name = g_strconcat(prefix, c->name, NULL);
+            add_record_group(facs, c, name);
+            g_free(name);
+        } else {
+            gchar *child_prefix =
+                g_strdup_printf("%s%s%c", prefix, c->name, GLOBALS->hier_delimeter);
+            add_scope_with_records(facs, c, child_prefix);
+            g_free(child_prefix);
+        }
+    }
+
+    g_free(children);
+}
+
+/* Adds the record row T of the signal area as a group.  */
+static void add_sst_record(GwFacs *facs, GwTreeNode *t)
+{
+    const char *prefix = GLOBALS->selected_hierarchy_name ? GLOBALS->selected_hierarchy_name : "";
+    gchar *name = g_strconcat(prefix, t->name, NULL);
+
+    add_record_group(facs, t, name);
+    g_free(name);
+}
+
 static void sig_selection_foreach(GtkTreeModel *model,
                                   GtkTreePath *path,
                                   GtkTreeIter *iter,
@@ -854,30 +1074,19 @@ static void sig_selection_foreach(GtkTreeModel *model,
     if (!sel)
         return;
 
+    GwFacs *facs = gw_dump_file_get_facs(GLOBALS->dump_file);
+
+    if (is_record_scope(sel)) {
+        add_sst_record(facs, sel);
+        return;
+    }
+
     low = fetchlow(sel)->t_which;
     high = fetchhigh(sel)->t_which;
 
-    GwFacs *facs = gw_dump_file_get_facs(GLOBALS->dump_file);
-
     /* Add signals and vectors.  */
     for (i = low; i <= high; i++) {
-        int len;
-        GwSymbol *s = gw_facs_get(facs, i);
-        GwSymbol *t = s->vec_root;
-        if ((t) && (GLOBALS->autocoalesce)) {
-            if (get_s_selected(t)) {
-                set_s_selected(t, 0);
-                len = 0;
-                while (t) {
-                    len++;
-                    t = t->vec_chain;
-                }
-                if (len)
-                    add_vector_chain(s->vec_root, len);
-            }
-        } else {
-            AddNode(s->n, NULL);
-        }
+        add_fac(facs, i);
     }
 }
 
@@ -987,6 +1196,9 @@ static void sig_selection_foreach_preload_lx2(GtkTreeModel *model,
 
     low = fetchlow(sel)->t_which;
     high = fetchhigh(sel)->t_which;
+    if (low < 0 || high < 0) {
+        return; /* scope without signals */
+    }
 
     GwFacs *facs = gw_dump_file_get_facs(GLOBALS->dump_file);
 
@@ -1058,6 +1270,67 @@ void action_callback(enum sst_cb_action action)
         gw_signal_list_scroll_to_trace(GW_SIGNAL_LIST(GLOBALS->signalarea), GLOBALS->traces.last);
     }
     redraw_signals_and_waves();
+}
+
+static void sig_selection_foreach_has_record(GtkTreeModel *model,
+                                             GtkTreePath *path,
+                                             GtkTreeIter *iter,
+                                             gpointer data)
+{
+    (void)path;
+
+    GwTreeNode *sel;
+
+    gtk_tree_model_get(model, iter, TREE_COLUMN, &sel, -1);
+    if (is_record_scope(sel)) {
+        *(gboolean *)data = TRUE;
+    }
+}
+
+/* If records are selected in the signal area, returns the selection as a
+   save file list (which keeps the record groups intact), otherwise NULL.  */
+char *add_dnd_records_from_tree_window(void)
+{
+    gboolean has_record = FALSE;
+
+    gtk_tree_selection_selected_foreach(GLOBALS->sig_selection_treesearch_gtk2_c_1,
+                                        &sig_selection_foreach_has_record,
+                                        &has_record);
+    if (!has_record) {
+        return NULL;
+    }
+
+    GLOBALS->pre_import_treesearch_gtk2_c_1 = 0;
+    gtk_tree_selection_selected_foreach(GLOBALS->sig_selection_treesearch_gtk2_c_1,
+                                        &sig_selection_foreach_preload_lx2,
+                                        NULL);
+    if (GLOBALS->pre_import_treesearch_gtk2_c_1) {
+        lx2_import_masked();
+    }
+
+    /* build the traces in a scratch list */
+    Traces tcache;
+    memcpy(&tcache, &GLOBALS->traces, sizeof(Traces));
+    GLOBALS->traces.total = 0;
+    GLOBALS->traces.first = GLOBALS->traces.last = NULL;
+
+    gtk_tree_selection_selected_foreach(GLOBALS->sig_selection_treesearch_gtk2_c_1,
+                                        &sig_selection_foreach,
+                                        NULL);
+
+    char *text = emit_gtkwave_savefile_formatted_entries_in_tcl_list(GLOBALS->traces.first, FALSE);
+
+    GwTrace *t = GLOBALS->traces.first;
+    while (t != NULL) {
+        GwTrace *next = t->t_next;
+        FreeTrace(t);
+        t = next;
+    }
+
+    memcpy(&GLOBALS->traces, &tcache, sizeof(Traces));
+    GLOBALS->traces.dirty = 1;
+
+    return text;
 }
 
 static void insert_callback(GtkWidget *widget, GtkWidget *nothing)
@@ -1603,28 +1876,33 @@ static void import_lx2(GwFacs *facs, gint low, gint high)
 
 static void add_nodes(GwFacs *facs, gint low, gint high)
 {
+    GwTreeNode *root = GLOBALS->sst_sig_root_treesearch_gtk2_c_1;
+
+    if (is_record_scope(root) || (root != NULL && tree_has_record_scope(root->child))) {
+        const char *prefix =
+            GLOBALS->selected_hierarchy_name ? GLOBALS->selected_hierarchy_name : "";
+
+        if (is_record_scope(root)) {
+            /* the selected hierarchy name includes the record and the delimiter */
+            gchar *name = g_strdup(prefix);
+            gsize len = strlen(name);
+            if (len > 0 && name[len - 1] == GLOBALS->hier_delimeter) {
+                name[len - 1] = 0;
+            }
+            add_record_group(facs, root, name);
+            g_free(name);
+        } else {
+            add_scope_with_records(facs, root, prefix);
+        }
+        return;
+    }
+
     for (gint i = low; i <= high; i++) {
-        int len;
         if (i < 0) {
             break; /* GHW */
         }
 
-        GwSymbol *s = gw_facs_get(facs, i);
-        GwSymbol *t = s->vec_root;
-        if ((t) && (GLOBALS->autocoalesce)) {
-            if (get_s_selected(t)) {
-                set_s_selected(t, 0);
-                len = 0;
-                while (t) {
-                    len++;
-                    t = t->vec_chain;
-                }
-                if (len)
-                    add_vector_chain(s->vec_root, len);
-            }
-        } else {
-            AddNode(s->n, NULL);
-        }
+        add_fac(facs, i);
     }
 }
 
