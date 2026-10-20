@@ -124,11 +124,28 @@ char *varxt_fix(char *s)
 }
 
 /* Fill the store model using current SIG_ROOT and FILTER_STR.  */
-/* Is T a VHDL record scope (e.g. as dumped by NVC)?  */
+/* Is T an array of VHDL records (as dumped by GHDL), i.e. a scope containing
+   only records named by their index?  */
+static gboolean is_record_array_scope(GwTreeNode *t)
+{
+    if (t == NULL || t->t_which >= 0 || t->child == NULL ||
+        t->kind == GW_TREE_KIND_VHDL_ST_RECORD) {
+        return FALSE;
+    }
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        if (c->t_which >= 0 || c->child == NULL || c->kind != GW_TREE_KIND_VHDL_ST_RECORD ||
+            c->name[0] != '[') {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/* Is T a VHDL record scope (e.g. as dumped by NVC) or an array of records?  */
 static gboolean is_record_scope(GwTreeNode *t)
 {
     return t != NULL && t->t_which < 0 && t->child != NULL &&
-           t->kind == GW_TREE_KIND_VHDL_ST_RECORD;
+           (t->kind == GW_TREE_KIND_VHDL_ST_RECORD || is_record_array_scope(t));
 }
 
 void fill_sig_store(void)
@@ -177,11 +194,11 @@ void fill_sig_store(void)
                                    TREE_COLUMN,
                                    t,
                                    TYPE_COLUMN,
-                                   "record",
+                                   is_record_array_scope(t) ? "array" : "record",
                                    DIR_COLUMN,
                                    "",
                                    DTYPE_COLUMN,
-                                   "record",
+                                   is_record_array_scope(t) ? "array" : "record",
                                    -1);
             }
             continue;
@@ -934,12 +951,16 @@ static int sorted_tree_node_cmp(const void *v1, const void *v2)
     return (n1->key > n2->key) - (n1->key < n2->key);
 }
 
-/* Returns the children of T which contain signals, sorted by declaration
-   order (DECL_ORDER) or by facility index.  Free with g_free().  */
-static SortedTreeNode *sort_tree_children(GwFacs *facs,
-                                          GwTreeNode *t,
-                                          gboolean decl_order,
-                                          gint *count)
+typedef enum
+{
+    CHILD_ORDER_FACS, /* by facility index */
+    CHILD_ORDER_NODES, /* by node address (declaration order for FST) */
+    CHILD_ORDER_TREE, /* as linked in the tree (declaration order for GHW) */
+} ChildOrder;
+
+/* Returns the children of T which contain signals, sorted by ORDER.
+   Free with g_free().  */
+static SortedTreeNode *sort_tree_children(GwFacs *facs, GwTreeNode *t, ChildOrder order, gint *count)
 {
     gint cnt = 0;
     for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
@@ -949,10 +970,10 @@ static SortedTreeNode *sort_tree_children(GwFacs *facs,
     SortedTreeNode *nodes = g_new(SortedTreeNode, cnt + 1);
     gint n = 0;
     for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
-        guintptr key;
-        if (decl_order) {
-            key = record_decl_key(facs, c);
-        } else {
+        guintptr key = record_decl_key(facs, c);
+        if (key != 0 && order == CHILD_ORDER_TREE) {
+            key = (guintptr)n + 1;
+        } else if (order == CHILD_ORDER_FACS) {
             gint which = fetchlow(c)->t_which;
             key = which >= 0 ? (guintptr)which + 1 : 0;
         }
@@ -978,16 +999,48 @@ static void add_record_group_marker(const char *name, TraceFlagsType flags)
     GLOBALS->default_flags = default_flags;
 }
 
-static void add_record_field(GwFacs *facs, GwTreeNode *t)
+/* Returns the vector root if all children of T are the bits of one
+   bitblasted vector (as GHW dumps arrays of std_logic), otherwise NULL.  */
+static GwSymbol *bitblasted_vector_root(GwFacs *facs, GwTreeNode *t)
+{
+    GwSymbol *root = NULL;
+
+    if (!GLOBALS->autocoalesce || t->child == NULL) {
+        return NULL;
+    }
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        if (c->t_which < 0) {
+            return NULL;
+        }
+        GwSymbol *s = gw_facs_get(facs, c->t_which);
+        if (s->vec_root == NULL || (root != NULL && s->vec_root != root)) {
+            return NULL;
+        }
+        root = s->vec_root;
+    }
+    return root;
+}
+
+/* Adds field T, a signal or a bitblasted vector (with root VEC_ROOT).  */
+static void add_record_field(GwFacs *facs, GwTreeNode *t, GwSymbol *vec_root)
 {
     GwTrace *last = GLOBALS->traces.last;
-    GwSymbol *s = gw_facs_get(facs, t->t_which);
+    gboolean added;
 
-    add_fac(facs, t->t_which);
+    if (vec_root != NULL) {
+        set_s_selected(vec_root, 1);
+        add_fac(facs, t->child->t_which);
+        added = GLOBALS->traces.last != last && GLOBALS->traces.last->vector;
+    } else {
+        GwSymbol *s = gw_facs_get(facs, t->t_which);
+        add_fac(facs, t->t_which);
+        added = GLOBALS->traces.last != last && !GLOBALS->traces.last->vector &&
+                GLOBALS->traces.last->n.nd == s->n;
+    }
 
     /* show the field name only, the enclosing group carries the hierarchy */
     GwTrace *tr = GLOBALS->traces.last;
-    if (tr != NULL && tr != last && !tr->vector && tr->n.nd == s->n && tr->name_full == NULL) {
+    if (added && tr->name_full == NULL) {
         tr->name_full = strdup_2(t->name);
         tr->name = tr->name_full;
     }
@@ -996,17 +1049,20 @@ static void add_record_field(GwFacs *facs, GwTreeNode *t)
 static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
 {
     gint n;
-    /* other loaders don't keep the declaration order, use the facility order */
-    gboolean decl_order = GW_IS_FST_FILE(GLOBALS->dump_file);
-    SortedTreeNode *fields = sort_tree_children(facs, t, decl_order, &n);
+    /* keep the declaration order where the loader allows, else use the facility order */
+    ChildOrder order = GW_IS_FST_FILE(GLOBALS->dump_file)   ? CHILD_ORDER_NODES
+                       : GW_IS_GHW_FILE(GLOBALS->dump_file) ? CHILD_ORDER_TREE
+                                                            : CHILD_ORDER_FACS;
+    SortedTreeNode *fields = sort_tree_children(facs, t, order, &n);
 
     if (n > 0) {
         add_record_group_marker(name, TR_GRP_BEGIN | TR_CLOSED | TR_RECORD);
 
         for (gint i = 0; i < n; i++) {
             GwTreeNode *c = fields[i].t;
-            if (c->t_which >= 0) {
-                add_record_field(facs, c);
+            GwSymbol *vec_root = NULL;
+            if (c->t_which >= 0 || (vec_root = bitblasted_vector_root(facs, c)) != NULL) {
+                add_record_field(facs, c, vec_root);
             } else {
                 add_record_group(facs, c, c->name);
             }
@@ -1024,7 +1080,7 @@ static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
 static void add_scope_with_records(GwFacs *facs, GwTreeNode *t, const char *prefix)
 {
     gint n;
-    SortedTreeNode *children = sort_tree_children(facs, t, FALSE, &n);
+    SortedTreeNode *children = sort_tree_children(facs, t, CHILD_ORDER_FACS, &n);
 
     for (gint i = 0; i < n; i++) {
         GwTreeNode *c = children[i].t;
@@ -1050,6 +1106,12 @@ static void add_sst_record(GwFacs *facs, GwTreeNode *t)
 {
     const char *prefix = GLOBALS->selected_hierarchy_name ? GLOBALS->selected_hierarchy_name : "";
     gchar *name = g_strconcat(prefix, t->name, NULL);
+    size_t len = strlen(prefix);
+
+    /* an element of an array of records (GHW): "arr.[0]" -> "arr[0]" */
+    if (t->name[0] == '[' && len > 0 && prefix[len - 1] == GLOBALS->hier_delimeter) {
+        memmove(name + len - 1, name + len, strlen(name + len) + 1);
+    }
 
     add_record_group(facs, t, name);
     g_free(name);

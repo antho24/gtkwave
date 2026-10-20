@@ -401,6 +401,7 @@ static GwTreeNode *build_hierarchy_record(GwGhwLoader *self,
     GwTreeNode *res = g_malloc0(sizeof(GwTreeNode) + strlen(pfx) + 1);
     strcpy(res->name, (char *)pfx);
     res->t_which = WAVE_T_WHICH_UNDEFINED_COMPNAME;
+    res->kind = GW_TREE_KIND_VHDL_ST_RECORD;
 
     last = NULL;
     for (i = 0; i < nbr_els; i++) {
@@ -723,7 +724,8 @@ static GwTreeNode *build_hierarchy(GwGhwLoader *self, struct ghw_hie *hie)
             t = build_hierarchy_type(self, hie->u.sig.type, hie->name, &ptr);
             if (*ptr != 0)
                 abort();
-            if (t) {
+            /* Keep the record kind so that records can be added as a whole.  */
+            if (t && t->kind != GW_TREE_KIND_VHDL_ST_RECORD) {
                 t->kind = ttype;
             }
             return t;
