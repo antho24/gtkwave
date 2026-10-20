@@ -124,6 +124,33 @@ char *varxt_fix(char *s)
 }
 
 /* Fill the store model using current SIG_ROOT and FILTER_STR.  */
+/* Is NAME the index of an array element, "[0]" (GHW) or "0" (FST by GHDL)?  */
+static gboolean is_index_name(const char *name)
+{
+    if (name[0] == '[') {
+        return TRUE;
+    }
+    if (!g_ascii_isdigit(name[0])) {
+        return FALSE;
+    }
+    for (; *name; name++) {
+        if (!g_ascii_isdigit(*name)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/* Returns the display name of record T: array elements as "[0]".
+   Free with g_free().  */
+static gchar *record_element_name(GwTreeNode *t)
+{
+    if (t->name[0] != '[' && is_index_name(t->name)) {
+        return g_strdup_printf("[%s]", t->name);
+    }
+    return g_strdup(t->name);
+}
+
 /* Is T an array of VHDL records (as dumped by GHDL), i.e. a scope containing
    only records named by their index?  */
 static gboolean is_record_array_scope(GwTreeNode *t)
@@ -134,7 +161,7 @@ static gboolean is_record_array_scope(GwTreeNode *t)
     }
     for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
         if (c->t_which >= 0 || c->child == NULL || c->kind != GW_TREE_KIND_VHDL_ST_RECORD ||
-            c->name[0] != '[') {
+            !is_index_name(c->name)) {
             return FALSE;
         }
     }
@@ -1064,7 +1091,9 @@ static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
             if (c->t_which >= 0 || (vec_root = bitblasted_vector_root(facs, c)) != NULL) {
                 add_record_field(facs, c, vec_root);
             } else {
-                add_record_group(facs, c, c->name);
+                gchar *field_name = record_element_name(c);
+                add_record_group(facs, c, field_name);
+                g_free(field_name);
             }
         }
 
@@ -1105,16 +1134,18 @@ static void add_scope_with_records(GwFacs *facs, GwTreeNode *t, const char *pref
 static void add_sst_record(GwFacs *facs, GwTreeNode *t)
 {
     const char *prefix = GLOBALS->selected_hierarchy_name ? GLOBALS->selected_hierarchy_name : "";
-    gchar *name = g_strconcat(prefix, t->name, NULL);
+    gchar *element_name = record_element_name(t);
+    gchar *name = g_strconcat(prefix, element_name, NULL);
     size_t len = strlen(prefix);
 
-    /* an element of an array of records (GHW): "arr.[0]" -> "arr[0]" */
-    if (t->name[0] == '[' && len > 0 && prefix[len - 1] == GLOBALS->hier_delimeter) {
+    /* an element of an array of records: "arr.[0]" -> "arr[0]" */
+    if (element_name[0] == '[' && len > 0 && prefix[len - 1] == GLOBALS->hier_delimeter) {
         memmove(name + len - 1, name + len, strlen(name + len) + 1);
     }
 
     add_record_group(facs, t, name);
     g_free(name);
+    g_free(element_name);
 }
 
 static void sig_selection_foreach(GtkTreeModel *model,

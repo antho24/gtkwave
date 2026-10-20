@@ -37,12 +37,12 @@ of these features.
 - Added `dbl_mant_dig_overrides` rc environment variable.
 - Added `disable_antialiasing` rc variable.
 - Added `editor_run_in_terminal` rc variable.
-- VHDL records (in FST files written by NVC and GHW files written by GHDL) are listed in
-  the signals pane and are added as collapsible groups with nested records as nested
-  groups. Arrays of records in GHW files are added as a group of their elements. The
-  group row of a record shows its composite value, e.g. `{1 05 run {0 3}}`. Records are
-  shown as an indented tree with expanders that open and close the record with a single
-  click.
+- VHDL records (in FST files written by NVC or GHDL and GHW files written by GHDL) are
+  listed in the signals pane and are added as collapsible groups with nested records as
+  nested groups. Arrays of records written by GHDL are added as a group of their
+  elements. The group row of a record shows its composite value, e.g. `{1 05 run {0 3}}`.
+  Records are shown as an indented tree with expanders that open and close the record
+  with a single click.
 - The signal names and values are shown in separate columns, each with its own width and
   horizontal scrollbar.
 - The full hierarchical name of the signal under the pointer in the waveform or signal list
