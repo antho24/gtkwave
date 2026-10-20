@@ -1811,14 +1811,20 @@ savefile_bail:
         }
 
         os = (os < 48) ? 48 : os;
-        gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow), os + 30, -1);
+        gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow),
+                                    os + 30 + SIGNAL_VALUE_COLUMN_WIDTH,
+                                    -1);
+        signalwindow_set_name_column_width(os + SIGNAL_NAME_COLUMN_PAD);
     } else {
         if (GLOBALS->initial_signal_window_width) {
             int os;
 
             os = GLOBALS->initial_signal_window_width;
             os = (os < 48) ? 48 : os;
-            gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow), os + 30, -1);
+            gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow),
+                                        os + 30 + SIGNAL_VALUE_COLUMN_WIDTH,
+                                        -1);
+            signalwindow_set_name_column_width(os + SIGNAL_NAME_COLUMN_PAD);
         }
     }
 

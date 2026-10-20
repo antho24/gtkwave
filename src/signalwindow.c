@@ -18,6 +18,7 @@
 #include "signal_list.h"
 #include "gw-wave-view.h"
 #include "record.h"
+#include "main.h"
 
 /* GDK_KEY_equal defined from gtk2 2.22 onwards. */
 #ifndef GDK_KEY_equal
@@ -241,6 +242,18 @@ static gboolean mouseover_timer(gpointer dummy)
 /***  gtkwave click routines turned on with "use_standard_clicking"=0   ***/
 /**************************************************************************/
 
+static GtkWidget *create_signal_column(GtkWidget *signal_list)
+{
+    GtkAdjustment *hslider = gw_signal_list_get_hadjustment(GW_SIGNAL_LIST(signal_list));
+    GtkWidget *hscroll = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, hslider);
+
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(box), signal_list, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), hscroll, FALSE, FALSE, 0);
+
+    return box;
+}
+
 GtkWidget *create_signalwindow(void)
 {
     GLOBALS->signalarea = gw_signal_list_new();
@@ -249,16 +262,25 @@ GtkWidget *create_signalwindow(void)
 
     g_timeout_add(100, mouseover_timer, NULL);
 
-    GtkAdjustment *hslider = gw_signal_list_get_hadjustment(GW_SIGNAL_LIST(GLOBALS->signalarea));
-    GtkWidget *hscroll = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, hslider);
+    GLOBALS->signalarea_values = gw_signal_list_new_values(GW_SIGNAL_LIST(GLOBALS->signalarea));
 
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_box_pack_start(GTK_BOX(box), GLOBALS->signalarea, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(box), hscroll, FALSE, FALSE, 0);
+    /* the names and the values are shown in separate columns, each with its
+       own horizontal scrollbar */
+    GtkWidget *paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_paned_pack1(GTK_PANED(paned), create_signal_column(GLOBALS->signalarea), FALSE, TRUE);
+    gtk_paned_pack2(GTK_PANED(paned), create_signal_column(GLOBALS->signalarea_values), TRUE, TRUE);
 
-    gtk_widget_show_all(box);
+    gtk_widget_show_all(paned);
 
-    return box;
+    return paned;
+}
+
+/* Sets the width of the name column, the value column gets the rest.  */
+void signalwindow_set_name_column_width(int width)
+{
+    if (GLOBALS->signalwindow != NULL && GTK_IS_PANED(GLOBALS->signalwindow)) {
+        gtk_paned_set_position(GTK_PANED(GLOBALS->signalwindow), width);
+    }
 }
 
 void redraw_signals_and_waves(void)

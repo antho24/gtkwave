@@ -11,7 +11,15 @@ G_BEGIN_DECLS
 
 G_DECLARE_FINAL_TYPE(GwSignalList, gw_signal_list, GW, SIGNAL_LIST, GtkDrawingArea)
 
+typedef enum
+{
+    GW_SIGNAL_LIST_COLUMN_NAMES,
+    GW_SIGNAL_LIST_COLUMN_VALUES,
+} GwSignalListColumn;
+
 GtkWidget *gw_signal_list_new(void);
+GtkWidget *gw_signal_list_new_values(GwSignalList *names);
+int gw_signal_list_get_name_indent(GwTrace *t);
 GtkAdjustment *gw_signal_list_get_hadjustment(GwSignalList *signal_list);
 GtkAdjustment *gw_signal_list_get_vadjustment(GwSignalList *signal_list);
 void gw_signal_list_force_redraw(GwSignalList *signal_list);

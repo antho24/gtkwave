@@ -39,6 +39,7 @@ struct _GwTrace
     unsigned char t_fpdecshift; /* for fixed point decimal */
 
     guint64 record_sig; /* fields signature of a VHDL record group (see record.c) */
+    guint8 record_level; /* nesting level in a VHDL record tree, 0 if not in one (see record.c) */
 
     unsigned is_cursor : 1; /* set to mark a cursor trace */
     unsigned is_alias : 1; /* set when it's an alias (safe to free t->name then) */

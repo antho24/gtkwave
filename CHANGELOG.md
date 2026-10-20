@@ -39,7 +39,10 @@ of these features.
 - Added `editor_run_in_terminal` rc variable.
 - VHDL records (e.g. in FST files written by NVC) are listed in the signals pane and are
   added as collapsible groups with nested records as nested groups. The group row of a
-  record shows its composite value, e.g. `{1 05 run {0 3}}`.
+  record shows its composite value, e.g. `{1 05 run {0 3}}`. Records are shown as an
+  indented tree with expanders that open and close the record with a single click.
+- The signal names and values are shown in separate columns, each with its own width and
+  horizontal scrollbar.
 
 ### Removed
 

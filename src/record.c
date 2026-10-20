@@ -315,6 +315,38 @@ void record_trace_free(GwTrace *t)
     }
 }
 
+/* Sets the nesting level of the traces in record trees: 1 for the top level
+   record header, 2 for its fields and so on.  */
+static void record_traces_update_levels(void)
+{
+    GPtrArray *ends = g_ptr_array_new();
+
+    for (GwTrace *t = GLOBALS->traces.first; t != NULL; t = t->t_next) {
+        guint depth = ends->len;
+        guint8 level;
+
+        if (depth > 0 && t == g_ptr_array_index(ends, depth - 1)) {
+            g_ptr_array_set_size(ends, depth - 1);
+            level = MIN(depth, G_MAXUINT8);
+        } else if (IsGroupBegin(t) && ((t->flags & TR_RECORD) || depth > 0)) {
+            level = MIN(depth + 1, G_MAXUINT8);
+            if (t->t_match != NULL) {
+                g_ptr_array_add(ends, t->t_match);
+            }
+        } else {
+            level = MIN(depth + (depth > 0 ? 1 : 0), G_MAXUINT8);
+        }
+
+        /* the indentation changes the width of the names */
+        if (t->record_level != level) {
+            t->record_level = level;
+            GLOBALS->signalwindow_width_dirty = 1;
+        }
+    }
+
+    g_ptr_array_free(ends, TRUE);
+}
+
 /* Rebuilds the records whose fields changed (format, filters, moved traces).  */
 void record_traces_refresh(void)
 {
@@ -330,6 +362,8 @@ void record_traces_refresh(void)
         }
         g_ptr_array_free(fields, TRUE);
     }
+
+    record_traces_update_levels();
 }
 
 /* Flags to save for T: records are saved as blank group begins (or as a

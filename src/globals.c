@@ -395,6 +395,8 @@ static const struct Global globals_base_values = {
     NULL, /* signalfont 370 */
     0, /* max_signal_name_pixel_width 372 */
     0, /* signal_pixmap_width 373 */
+    NULL, /* signalarea_values */
+    0, /* signal_value_pixmap_width */
     1, /* fontheight 376 */
     0, /* dnd_state 377 */
     0, /* cached_mouseover_x */
@@ -934,6 +936,7 @@ void reload_into_new_context_2(void)
     new_globals->possibly_use_rc_defaults = GLOBALS->possibly_use_rc_defaults;
 
     new_globals->signalarea = GLOBALS->signalarea;
+    new_globals->signalarea_values = GLOBALS->signalarea_values;
     new_globals->wavearea = GLOBALS->wavearea;
 #ifdef WAVE_ALLOW_GTK3_GESTURE_EVENT
     new_globals->wavearea_gesture_swipe = GLOBALS->wavearea_gesture_swipe;

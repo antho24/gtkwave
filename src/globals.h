@@ -432,6 +432,8 @@ struct Global
     struct font_engine_font_t *signalfont; /* from signalwindow.c 397 */
     int max_signal_name_pixel_width; /* from signalwindow.c 399 */
     int signal_pixmap_width; /* from signalwindow.c 400 */
+    GtkWidget *signalarea_values; /* value column of the signal list */
+    int signal_value_pixmap_width; /* width of the value column contents */
     int fontheight; /* from signalwindow.c 404 */
     char dnd_state; /* from signalwindow.c 405 */
     gint cached_mouseover_x; /* from signalwindow.c */

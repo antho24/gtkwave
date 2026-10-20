@@ -1898,7 +1898,8 @@ void MaxSignalLength(void)
                     (TR_BLANK | TR_ANALOG_BLANK_STRETCH))) /* for "comment" style blank traces */
         {
             if (t->name || subname) {
-                len = font_engine_string_measure(GLOBALS->signalfont, buf);
+                len = font_engine_string_measure(GLOBALS->signalfont, buf) +
+                      gw_signal_list_get_name_indent(t);
                 if (len > maxlen)
                     maxlen = len;
             }
@@ -1909,7 +1910,8 @@ void MaxSignalLength(void)
             }
             t = GiveNextTrace(t);
         } else if (t->name || subname) {
-            len = font_engine_string_measure(GLOBALS->signalfont, buf);
+            len = font_engine_string_measure(GLOBALS->signalfont, buf) +
+                  gw_signal_list_get_name_indent(t);
             if (len > maxlen)
                 maxlen = len;
 
@@ -2022,10 +2024,9 @@ void MaxSignalLength(void)
 
     GLOBALS->max_signal_name_pixel_width = maxlen;
     GLOBALS->signal_pixmap_width = maxlen + 6; /* 2 * 3 pixel pad */
+    GLOBALS->signal_value_pixmap_width = 0;
     if (gw_marker_is_enabled(primary_marker)) {
-        GLOBALS->signal_pixmap_width += (vmaxlen + 6);
-        if (GLOBALS->signal_pixmap_width > 32767)
-            GLOBALS->signal_pixmap_width = 32767; /* fixes X11 protocol limitation crash */
+        GLOBALS->signal_value_pixmap_width = MIN(vmaxlen + 6, 32767);
     }
 
     GLOBALS->tims.resizemarker2 = GLOBALS->tims.resizemarker;
@@ -2037,6 +2038,18 @@ void MaxSignalLength(void)
         GLOBALS->signal_pixmap_width = 60;
 
     MaxSignalLength_2(dirty_kick);
+}
+
+/* Resizes the name column only when the width needed for the names changes,
+   so that the column keeps the width the user dragged it to.  */
+static void set_name_column_width_if_changed(int width)
+{
+    static int last_width = -1;
+
+    if (width != last_width) {
+        last_width = width;
+        signalwindow_set_name_column_width(width);
+    }
 }
 
 void MaxSignalLength_2(char dirty_kick)
@@ -2058,7 +2071,10 @@ void MaxSignalLength_2(char dirty_kick)
                 if (GLOBALS->first_unsized_signals && GLOBALS->max_signal_name_pixel_width != 0) {
                     GLOBALS->first_unsized_signals = 0;
                     gtk_paned_set_position(GTK_PANED(GLOBALS->panedwindow),
-                                           GLOBALS->max_signal_name_pixel_width + 30);
+                                           GLOBALS->max_signal_name_pixel_width + 30 +
+                                               SIGNAL_VALUE_COLUMN_WIDTH);
+                    signalwindow_set_name_column_width(GLOBALS->max_signal_name_pixel_width +
+                                                       SIGNAL_NAME_COLUMN_PAD);
                 } else {
                     gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow), os + 30, -1);
                 }
@@ -2087,7 +2103,10 @@ void MaxSignalLength_2(char dirty_kick)
                     int os;
                     os = rs;
                     os = (os < 48) ? 48 : os;
-                    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow), os + 30, -1);
+                    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow),
+                                                os + 30 + SIGNAL_VALUE_COLUMN_WIDTH,
+                                                -1);
+                    set_name_column_width_if_changed(os + SIGNAL_NAME_COLUMN_PAD);
                 } else {
                     int os;
                     os = 48;
@@ -2095,7 +2114,10 @@ void MaxSignalLength_2(char dirty_kick)
                         os = GLOBALS->initial_signal_window_width;
                     }
 
-                    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow), os + 30, -1);
+                    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->signalwindow),
+                                                os + 30 + SIGNAL_VALUE_COLUMN_WIDTH,
+                                                -1);
+                    set_name_column_width_if_changed(os + SIGNAL_NAME_COLUMN_PAD);
                 }
             }
         }

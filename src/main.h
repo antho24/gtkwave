@@ -28,6 +28,10 @@ GtkWidget *create_text(void);
 GtkWidget *create_entry_box(void);
 GtkWidget *create_wavewindow(void);
 GtkWidget *create_signalwindow(void);
+/* initial width of the value column and the padding of the name column */
+#define SIGNAL_VALUE_COLUMN_WIDTH (100)
+#define SIGNAL_NAME_COLUMN_PAD (12)
+void signalwindow_set_name_column_width(int width);
 
 void wave_gtk_window_set_title(GtkWindow *window, const gchar *title, int typ, int pct);
 

@@ -80,9 +80,104 @@ struct _GwSignalList
     // Scroll adjustments
     GtkAdjustment *hadjustment;
     GtkAdjustment *vadjustment;
+
+    // Shown column and the list showing the other column (sharing the
+    // vertical adjustment, the cursor is stored in the names list)
+    GwSignalListColumn column;
+    GwSignalList *peer;
 };
 
 G_DEFINE_TYPE(GwSignalList, gw_signal_list, GTK_TYPE_DRAWING_AREA)
+
+// Return the list that stores the state shared by both columns
+static GwSignalList *names_list(GwSignalList *signal_list)
+{
+    if (signal_list->column == GW_SIGNAL_LIST_COLUMN_VALUES && signal_list->peer != NULL) {
+        return signal_list->peer;
+    }
+    return signal_list;
+}
+
+// Redraw the list and the list showing the other column
+static void queue_redraw(GwSignalList *signal_list)
+{
+    signal_list->dirty = TRUE;
+    gtk_widget_queue_draw(GTK_WIDGET(signal_list));
+
+    if (signal_list->peer != NULL) {
+        signal_list->peer->dirty = TRUE;
+        gtk_widget_queue_draw(GTK_WIDGET(signal_list->peer));
+    }
+}
+
+// Rows of VHDL records are shown as a tree: each level is indented by one
+// row height, which also holds the expander of record headers.
+static int record_indent_width(void)
+{
+    return GLOBALS->fontheight;
+}
+
+static gboolean is_record_tree_header(GwTrace *t)
+{
+    return IsGroupBegin(t) && (t->flags & TR_RECORD) && t->record_level > 0;
+}
+
+int gw_signal_list_get_name_indent(GwTrace *t)
+{
+    return t->record_level * record_indent_width();
+}
+
+// Draw the indent guides of a record row and the expander of a record header
+static void render_record_tree(cairo_t *cr, GwTrace *t, GwColor *color, int x)
+{
+    int indent = record_indent_width();
+    int height = GLOBALS->fontheight - 1;
+
+    cairo_save(cr);
+    cairo_set_source_rgba(cr, color->r, color->g, color->b, color->a * 0.35);
+    cairo_set_line_width(cr, 1.0);
+    for (int level = 1; level < t->record_level; level++) {
+        double lx = x + (level - 1) * indent + indent / 2 + 0.5;
+        cairo_move_to(cr, lx, 0);
+        cairo_line_to(cr, lx, height);
+    }
+    cairo_stroke(cr);
+
+    if (is_record_tree_header(t)) {
+        double cx = x + (t->record_level - 1) * indent + indent / 2.0;
+        double cy = height / 2.0;
+        double r = indent * 0.25;
+
+        cairo_set_source_rgba(cr, color->r, color->g, color->b, color->a);
+        if (IsClosed(t)) {
+            cairo_move_to(cr, cx - r * 0.6, cy - r);
+            cairo_line_to(cr, cx + r * 0.9, cy);
+            cairo_line_to(cr, cx - r * 0.6, cy + r);
+        } else {
+            cairo_move_to(cr, cx - r, cy - r * 0.6);
+            cairo_line_to(cr, cx + r, cy - r * 0.6);
+            cairo_line_to(cr, cx, cy + r * 0.9);
+        }
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+
+    cairo_restore(cr);
+}
+
+// Return TRUE if X (in widget coordinates) is on the expander of the record header T
+static gboolean is_on_record_expander(GwSignalList *signal_list, GwTrace *t, gdouble x)
+{
+    if (signal_list->column != GW_SIGNAL_LIST_COLUMN_NAMES || !is_record_tree_header(t)) {
+        return FALSE;
+    }
+
+    int indent = record_indent_width();
+    gdouble left =
+        3 - gtk_adjustment_get_value(signal_list->hadjustment) + (t->record_level - 1) * indent;
+
+    return x >= left && x < left + indent;
+}
 
 // Get the text and background colors for a trace
 static void get_trace_colors(GwTrace *t,
@@ -136,6 +231,7 @@ int gw_signal_list_get_num_traces_displayable(GwSignalList *signal_list)
 static void render_signal(cairo_t *cr,
                           GwSignalListColors *colors,
                           GwTrace *t,
+                          GwSignalListColumn column,
                           int width,
                           int text_dx)
 {
@@ -191,27 +287,35 @@ static void render_signal(cairo_t *cr,
     cairo_rectangle(cr, 0, 0, width, GLOBALS->fontheight - 1);
     cairo_fill(cr);
 
-    if (t->name || subname) {
-        int text_x;
-        if (((IsGroupBegin(t) || IsGroupEnd(t)) && !HasWave(t)) || GLOBALS->left_justify_sigs) {
-            text_x = 3 + text_dx;
-        } else {
-            text_x = 3 + GLOBALS->max_signal_name_pixel_width -
-                     font_engine_string_measure(GLOBALS->signalfont, buf) + text_dx;
+    if (column == GW_SIGNAL_LIST_COLUMN_NAMES) {
+        if (t->record_level > 0) {
+            render_record_tree(cr, t, &text_color, 3 + text_dx);
         }
 
-        XXX_font_engine_draw_string(cr, GLOBALS->signalfont, &text_color, text_x, text_y, buf);
-    }
+        if (t->name || subname) {
+            int text_x;
+            if (t->record_level > 0) {
+                text_x = 3 + gw_signal_list_get_name_indent(t) + text_dx;
+            } else if (((IsGroupBegin(t) || IsGroupEnd(t)) && !HasWave(t)) ||
+                       GLOBALS->left_justify_sigs) {
+                text_x = 3 + text_dx;
+            } else {
+                text_x = 3 + GLOBALS->max_signal_name_pixel_width -
+                         font_engine_string_measure(GLOBALS->signalfont, buf) + text_dx;
+            }
 
-    if (HasWave(t) || bv) {
+            XXX_font_engine_draw_string(cr, GLOBALS->signalfont, &text_color, text_x, text_y, buf);
+        }
+    } else if (HasWave(t) || bv) {
         if (t->asciivalue && !(t->flags & TR_EXCLUDE)) {
-            int text_x = GLOBALS->max_signal_name_pixel_width + 6 + text_dx;
+            // the value is stored as "=value"
+            const char *value = t->asciivalue[0] == '=' ? t->asciivalue + 1 : t->asciivalue;
             XXX_font_engine_draw_string(cr,
                                         GLOBALS->signalfont,
                                         &text_color,
-                                        text_x,
+                                        3 + text_dx,
                                         text_y,
-                                        t->asciivalue);
+                                        value);
         }
     }
 }
@@ -233,7 +337,7 @@ static void render_signals(GwSignalList *signal_list, GwSignalListColors *colors
     if (t) {
         int i;
         for (i = 0; i < num_traces_displayable && t; i++) {
-            render_signal(cr, colors, t, width, text_dx);
+            render_signal(cr, colors, t, signal_list->column, width, text_dx);
 
             cairo_translate(cr, 0, GLOBALS->fontheight);
 
@@ -271,7 +375,10 @@ static void update_hadjustment(GwSignalList *signal_list)
     gdouble width = (gdouble)gtk_widget_get_allocated_width(GTK_WIDGET(signal_list));
 
     gdouble lower = 0.0;
-    gdouble upper = MAX(GLOBALS->signal_pixmap_width, 1.0);
+    gdouble upper = signal_list->column == GW_SIGNAL_LIST_COLUMN_NAMES
+                        ? GLOBALS->signal_pixmap_width
+                        : GLOBALS->signal_value_pixmap_width;
+    upper = MAX(upper, 1.0);
     gdouble increment = 1.0;
     gdouble page_size = width;
     gdouble page_increment = width;
@@ -331,7 +438,8 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr)
                                     &colors->black,
                                     4,
                                     GLOBALS->fontheight - 4,
-                                    "Time");
+                                    signal_list->column == GW_SIGNAL_LIST_COLUMN_NAMES ? "Time"
+                                                                                       : "Value");
     }
 
     // Draw focus rectangle
@@ -480,7 +588,7 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
                 // Otherwise only select the clicked trace
                 ClearTraces();
                 t->flags ^= TR_HIGHLIGHT;
-                signal_list->cursor = t;
+                names_list(signal_list)->cursor = t;
                 signal_list->dirty = TRUE;
             }
         }
@@ -491,6 +599,18 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
             // Single primary press -> select trace or start DnD
 
             GwTrace *t = get_trace_for_y(signal_list, (int)event->y);
+
+            // Single press on the expander of a record -> open/close it
+            if (t != NULL && is_on_record_expander(signal_list, t, event->x)) {
+                if (IsClosed(t)) {
+                    OpenTrace(t);
+                } else {
+                    CloseTrace(t);
+                }
+                GLOBALS->signalwindow_width_dirty = 1;
+                redraw_signals_and_waves();
+                return GDK_EVENT_STOP;
+            }
 
             gboolean selected = t != NULL && IsSelected(t) ? TRUE : FALSE;
 
@@ -511,8 +631,8 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
                 signal_list->drag.start_x = event->x;
                 signal_list->drag.start_y = event->y;
 
-                if ((event->state & GDK_SHIFT_MASK) && signal_list->cursor != NULL) {
-                    select_range(signal_list->cursor, t);
+                if ((event->state & GDK_SHIFT_MASK) && names_list(signal_list)->cursor != NULL) {
+                    select_range(names_list(signal_list)->cursor, t);
                     signal_list->dirty = TRUE;
                 } else if (!signal_list->drag.selected) {
                     // Highlight trace immediately if trace wasn't previously selected.
@@ -521,7 +641,7 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
                     // button is released or the drag threshold distance has
                     // been reached.
                     t->flags ^= TR_HIGHLIGHT;
-                    signal_list->cursor = t;
+                    names_list(signal_list)->cursor = t;
                     signal_list->dirty = TRUE;
                 }
             }
@@ -543,6 +663,7 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
                         CloseTrace(t);
                         full_redraw = TRUE;
                     }
+                    GLOBALS->signalwindow_width_dirty = 1;
                 } else if (HasWave(t)) {
                     ClearTraces();
                     t->flags |= TR_HIGHLIGHT;
@@ -559,7 +680,7 @@ static gboolean button_press_event(GtkWidget *widget, GdkEventButton *event)
     if (full_redraw) {
         redraw_signals_and_waves();
     } else if (signal_list->dirty) {
-        gtk_widget_queue_draw(widget);
+        queue_redraw(signal_list);
     }
 
     return GDK_EVENT_STOP;
@@ -585,10 +706,9 @@ static gboolean button_release_event(GtkWidget *widget, GdkEventButton *event)
                 t->flags |= TR_HIGHLIGHT;
             }
 
-            signal_list->cursor = t;
+            names_list(signal_list)->cursor = t;
 
-            signal_list->dirty = TRUE;
-            gtk_widget_queue_draw(widget);
+            queue_redraw(signal_list);
 
             if (GLOBALS->highlight_wavewindow) {
                 gw_wave_view_force_redraw(GW_WAVE_VIEW(GLOBALS->wavearea));
@@ -732,6 +852,8 @@ static gboolean scroll_timeout(GwSignalList *signal_list)
 // Sets the cursor trace and make sure the trace is visible.
 static void set_cursor(GwSignalList *signal_list, GwTrace *cursor)
 {
+    signal_list = names_list(signal_list);
+
     if (signal_list->cursor != NULL) {
         signal_list->cursor->flags &= ~TR_HIGHLIGHT;
     }
@@ -742,8 +864,7 @@ static void set_cursor(GwSignalList *signal_list, GwTrace *cursor)
 
         gw_signal_list_scroll_to_trace(signal_list, signal_list->cursor);
 
-        signal_list->dirty = TRUE;
-        gtk_widget_queue_draw(GTK_WIDGET(signal_list));
+        queue_redraw(signal_list);
     }
 }
 
@@ -756,8 +877,8 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
     if (state == GDK_SHIFT_MASK) {
         if (event->keyval == GDK_KEY_Up || event->keyval == GDK_KEY_KP_Up) {
             // Shift + Up: Move cursor up one trace
-            if (signal_list->cursor != NULL) {
-                GwTrace *cursor = GivePrevTrace(signal_list->cursor);
+            if (names_list(signal_list)->cursor != NULL) {
+                GwTrace *cursor = GivePrevTrace(names_list(signal_list)->cursor);
                 if (cursor != NULL) {
                     set_cursor(signal_list, cursor);
                 }
@@ -767,8 +888,8 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
             return GDK_EVENT_STOP;
         } else if (event->keyval == GDK_KEY_Down || event->keyval == GDK_KEY_KP_Down) {
             // Shift + Down: Move cursor down one trace
-            if (signal_list->cursor != NULL) {
-                GwTrace *cursor = GiveNextTrace(signal_list->cursor);
+            if (names_list(signal_list)->cursor != NULL) {
+                GwTrace *cursor = GiveNextTrace(names_list(signal_list)->cursor);
                 if (cursor != NULL) {
                     set_cursor(signal_list, cursor);
                 }
@@ -782,8 +903,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
             // CTRL + a: Highlight all traces
             menu_dataformat_highlight_all(NULL, 0, NULL);
 
-            signal_list->dirty = TRUE;
-            gtk_widget_queue_draw(widget);
+            queue_redraw(signal_list);
             return GDK_EVENT_STOP;
         }
     } else if (state == (GDK_SHIFT_MASK | GW_CONTROL_MASK)) {
@@ -791,8 +911,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
             // CTRL + SHIFT + A: UnHighlight all traces
             menu_dataformat_unhighlight_all(NULL, 0, NULL);
 
-            signal_list->dirty = TRUE;
-            gtk_widget_queue_draw(widget);
+            queue_redraw(signal_list);
             return GDK_EVENT_STOP;
         }
     } else if (!state) {
@@ -872,7 +991,10 @@ static gboolean drag_motion(GtkWidget *widget, GdkDragContext *context, gint x, 
     // Default to move if a trace is dragged inside the signal list and control isn't pressed
     GdkDragAction action = GDK_ACTION_COPY;
     GtkWidget *source_widget = gtk_drag_get_source_widget(context);
-    if (widget == source_widget && (gdk_drag_context_get_actions(context) & GDK_ACTION_MOVE)) {
+    gboolean same_list =
+        widget == source_widget ||
+        (signal_list->peer != NULL && source_widget == GTK_WIDGET(signal_list->peer));
+    if (same_list && (gdk_drag_context_get_actions(context) & GDK_ACTION_MOVE)) {
         action = GDK_ACTION_MOVE;
     }
 
@@ -1116,6 +1238,11 @@ static void destroy(GtkWidget *widget)
 {
     GwSignalList *signal_list = GW_SIGNAL_LIST(widget);
 
+    if (signal_list->peer != NULL) {
+        signal_list->peer->peer = NULL;
+        signal_list->peer = NULL;
+    }
+
     if (signal_list->hadjustment != NULL) {
         g_object_unref(signal_list->hadjustment);
         signal_list->hadjustment = NULL;
@@ -1166,7 +1293,7 @@ static void gw_signal_list_init(GwSignalList *signal_list)
     GtkTargetEntry targets[] = {
         {
             .target = target_signal_list,
-            .flags = GTK_TARGET_SAME_WIDGET,
+            .flags = GTK_TARGET_SAME_APP,
             .info = WAVE_DRAG_INFO_SIGNAL_LIST,
         },
         {
@@ -1215,11 +1342,29 @@ void gw_signal_list_force_redraw(GwSignalList *signal_list)
 
     MaxSignalLength();
 
-    signal_list->dirty = TRUE;
-    gtk_widget_queue_draw(GTK_WIDGET(signal_list));
+    queue_redraw(signal_list);
 }
 
 GtkWidget *gw_signal_list_new(void)
 {
     return GTK_WIDGET(g_object_new(GW_TYPE_SIGNAL_LIST, NULL));
+}
+
+// Create a list showing the values of the traces in NAMES. Both lists share
+// the vertical scroll position, the selection and the cursor.
+GtkWidget *gw_signal_list_new_values(GwSignalList *names)
+{
+    g_return_val_if_fail(GW_IS_SIGNAL_LIST(names), NULL);
+
+    GwSignalList *values = g_object_new(GW_TYPE_SIGNAL_LIST, NULL);
+    values->column = GW_SIGNAL_LIST_COLUMN_VALUES;
+
+    g_signal_handlers_disconnect_by_data(values->vadjustment, values);
+    g_object_unref(values->vadjustment);
+    values->vadjustment = g_object_ref(names->vadjustment);
+
+    values->peer = names;
+    names->peer = values;
+
+    return GTK_WIDGET(values);
 }
