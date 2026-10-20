@@ -1620,6 +1620,35 @@ static gboolean wavearea_swipe_tick(GtkWidget *widget,
 
 #endif
 
+/* Shows the full name of the trace under the pointer.  */
+static gboolean hover_motion_event(GtkWidget *widget, GdkEventMotion *event, gpointer data)
+{
+    (void)widget;
+    (void)data;
+
+    GwTrace *t = NULL;
+    int row = ((int)event->y - GLOBALS->fontheight) / GLOBALS->fontheight;
+    if (event->y >= GLOBALS->fontheight) {
+        t = gw_signal_list_get_trace(GW_SIGNAL_LIST(GLOBALS->signalarea), row);
+    }
+
+    status_hover_trace(t);
+    gdk_event_request_motions(event);
+
+    return GDK_EVENT_PROPAGATE;
+}
+
+static gboolean hover_leave_event(GtkWidget *widget, GdkEventCrossing *event, gpointer data)
+{
+    (void)widget;
+    (void)event;
+    (void)data;
+
+    status_hover_trace(NULL);
+
+    return GDK_EVENT_PROPAGATE;
+}
+
 GtkWidget *create_wavewindow(void)
 {
 #ifdef WAVE_GTK3_SIZE_ALLOCATE_WORKAROUND_DEPRECATED_API
@@ -1631,6 +1660,14 @@ GtkWidget *create_wavewindow(void)
     GLOBALS->wavearea = gw_wave_view_new();
     gtk_widget_set_hexpand(GLOBALS->wavearea, TRUE);
     gtk_widget_set_vexpand(GLOBALS->wavearea, TRUE);
+
+    /* connected first, as the other handlers may stop the motion events */
+    gtk_widget_add_events(GLOBALS->wavearea, GDK_LEAVE_NOTIFY_MASK);
+    g_signal_connect(GLOBALS->wavearea,
+                     "motion-notify-event",
+                     G_CALLBACK(hover_motion_event),
+                     NULL);
+    g_signal_connect(GLOBALS->wavearea, "leave-notify-event", G_CALLBACK(hover_leave_event), NULL);
 
 #ifdef EXPERIMENTAL_PLUGIN_SUPPORT
     // TODO: Remove this hack! It doesn't support context changes and will update the waveform too

@@ -2,6 +2,7 @@
 #include "gw-wave-view.h"
 #include "globals.h"
 #include "menu.h"
+#include "status.h"
 
 #define SCROLL_AREA_HEIGHT (GLOBALS->fontheight * 2)
 
@@ -1231,7 +1232,20 @@ static gboolean motion_notify_event(GtkWidget *widget, GdkEventMotion *event)
     GLOBALS->cached_mouseover_x = event->x;
     GLOBALS->cached_mouseover_y = event->y;
 
+    status_hover_trace(get_trace_for_y(signal_list, (int)event->y));
+    gdk_event_request_motions(event);
+
     return GDK_EVENT_STOP;
+}
+
+static gboolean leave_notify_event(GtkWidget *widget, GdkEventCrossing *event)
+{
+    (void)widget;
+    (void)event;
+
+    status_hover_trace(NULL);
+
+    return GDK_EVENT_PROPAGATE;
 }
 
 static void destroy(GtkWidget *widget)
@@ -1264,6 +1278,7 @@ static void gw_signal_list_class_init(GwSignalListClass *klass)
     widget_class->button_press_event = button_press_event;
     widget_class->button_release_event = button_release_event;
     widget_class->motion_notify_event = motion_notify_event;
+    widget_class->leave_notify_event = leave_notify_event;
     widget_class->key_press_event = key_press_event;
     widget_class->scroll_event = scroll_event;
     widget_class->drag_motion = drag_motion;
@@ -1283,7 +1298,8 @@ static void gw_signal_list_init(GwSignalList *signal_list)
     gtk_widget_set_events(widget,
                           GDK_SCROLL_MASK | GDK_EXPOSURE_MASK | GDK_BUTTON_PRESS_MASK |
                               GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK |
-                              GDK_POINTER_MOTION_HINT_MASK | GDK_FOCUS_CHANGE_MASK);
+                              GDK_POINTER_MOTION_HINT_MASK | GDK_FOCUS_CHANGE_MASK |
+                              GDK_LEAVE_NOTIFY_MASK);
 
     gtk_widget_set_can_focus(widget, TRUE);
 

@@ -323,6 +323,7 @@ struct Global
     char disable_mouseover; /* from mouseover.c 271 */
     char clipboard_mouseover; /* from mouseover.c */
     GtkWidget *mouseover_mouseover_c_1; /* from mouseover.c 272 */
+    GtkWidget *hover_path_label; /* full name of the trace under the pointer */
 
     /*
      * pagebuttons.c

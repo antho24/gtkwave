@@ -12,4 +12,8 @@
 
 void status_text(const char *str);
 
+#include "analyzer.h"
+
+void status_hover_trace(GwTrace *t);
+
 #endif

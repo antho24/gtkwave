@@ -14,6 +14,49 @@
 #include "lx2.h"
 #include "gw-ghw-file.h"
 
+/* Returns the full hierarchical name of T, NULL if it has none.  */
+static const char *trace_full_name(GwTrace *t)
+{
+    /* analog traces span several rows, find the trace for this one */
+    while (t != NULL && (t->flags & TR_ANALOG_BLANK_STRETCH)) {
+        t = t->t_prev;
+    }
+
+    if (t == NULL) {
+        return NULL;
+    }
+
+    if (HasWave(t)) {
+        return t->vector ? t->n.vec->bvname : t->n.nd->nname;
+    }
+
+    /* groups, including VHDL records which aren't built yet */
+    if (IsGroupBegin(t)) {
+        return t->name;
+    }
+
+    return NULL;
+}
+
+/* Shows the full name of the trace T under the pointer at the bottom of the
+   main window, or clears it if T is NULL.  */
+void status_hover_trace(GwTrace *t)
+{
+    if (GLOBALS->hover_path_label == NULL) {
+        return;
+    }
+
+    const char *name = trace_full_name(t);
+    if (name == NULL) {
+        name = "";
+    }
+
+    GtkLabel *label = GTK_LABEL(GLOBALS->hover_path_label);
+    if (strcmp(gtk_label_get_text(label), name) != 0) {
+        gtk_label_set_text(label, name);
+    }
+}
+
 void status_text(const char *str)
 {
     if (GLOBALS->quiet_checkmenu) {

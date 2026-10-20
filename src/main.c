@@ -1982,6 +1982,17 @@ savefile_bail:
 
     gtk_widget_show(whole_table);
 
+    /* full name of the trace under the pointer, below the waves */
+    GLOBALS->hover_path_label = gtk_label_new("");
+    gtk_label_set_xalign(GTK_LABEL(GLOBALS->hover_path_label), 0.0);
+    gtk_label_set_ellipsize(GTK_LABEL(GLOBALS->hover_path_label), PANGO_ELLIPSIZE_START);
+    gtk_widget_set_margin_start(GLOBALS->hover_path_label, 6);
+    gtk_widget_set_margin_end(GLOBALS->hover_path_label, 6);
+    gtk_widget_set_margin_top(GLOBALS->hover_path_label, 2);
+    gtk_widget_set_margin_bottom(GLOBALS->hover_path_label, 2);
+    gtk_widget_show(GLOBALS->hover_path_label);
+    gtk_box_pack_end(GTK_BOX(main_vbox), GLOBALS->hover_path_label, FALSE, FALSE, 0);
+
     gtk_box_pack_end(GTK_BOX(main_vbox),
                      whole_table,
                      TRUE,

@@ -286,6 +286,7 @@ static const struct Global globals_base_values = {
     1, /* disable_mouseover 254 */
     0, /* clipboard_mouseover */
     NULL, /* mouseover_mouseover_c_1 255 */
+    NULL, /* hover_path_label */
 
     /*
      * pagebuttons.c
@@ -937,6 +938,7 @@ void reload_into_new_context_2(void)
 
     new_globals->signalarea = GLOBALS->signalarea;
     new_globals->signalarea_values = GLOBALS->signalarea_values;
+    new_globals->hover_path_label = GLOBALS->hover_path_label;
     new_globals->wavearea = GLOBALS->wavearea;
 #ifdef WAVE_ALLOW_GTK3_GESTURE_EVENT
     new_globals->wavearea_gesture_swipe = GLOBALS->wavearea_gesture_swipe;

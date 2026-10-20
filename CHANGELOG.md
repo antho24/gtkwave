@@ -43,6 +43,8 @@ of these features.
   indented tree with expanders that open and close the record with a single click.
 - The signal names and values are shown in separate columns, each with its own width and
   horizontal scrollbar.
+- The full hierarchical name of the signal under the pointer in the waveform or signal list
+  is shown at the bottom of the main window.
 
 ### Removed
 
