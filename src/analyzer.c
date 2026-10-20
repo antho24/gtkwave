@@ -26,6 +26,7 @@
 #include "ttranslate.h"
 #include "analyzer.h"
 #include <gtkwave.h>
+#include "record.h"
 
 void UpdateTraceSelection(GwTrace *t);
 int traverse_vector_nodes(GwTrace *t);
@@ -364,8 +365,9 @@ int AddBlankTrace(char *commentname)
     }
     AddTrace(t);
     /* Keep only flags that make sense for a blank trace. */
-    flags_filtered = TR_BLANK | (GLOBALS->default_flags & (TR_CLOSED | TR_GRP_BEGIN | TR_GRP_END |
-                                                           TR_COLLAPSED | TR_ANALOG_BLANK_STRETCH));
+    flags_filtered =
+        TR_BLANK | (GLOBALS->default_flags & (TR_CLOSED | TR_GRP_BEGIN | TR_GRP_END | TR_COLLAPSED |
+                                              TR_ANALOG_BLANK_STRETCH | TR_RECORD));
     t->flags = flags_filtered;
     if (t->flags & TR_ANALOG_BLANK_STRETCH)
 
@@ -375,6 +377,11 @@ int AddBlankTrace(char *commentname)
 
     if ((comment = precondition_string(commentname))) {
         t->name = comment;
+    }
+
+    /* the fields of a record are complete at the end of its group */
+    if (IsGroupEnd(t) && t->t_match != NULL) {
+        record_trace_build(t->t_match);
     }
 
     return (1);
@@ -638,6 +645,8 @@ void FreeTrace(GwTrace *t)
             free_2(bv->bvname);
         if (t->n.vec)
             free_2(t->n.vec);
+    } else if (t->record_node_owned) {
+        record_trace_free(t);
     } else {
         if (t->n.nd && t->n.nd->expansion) {
             DeleteNode(t->n.nd);

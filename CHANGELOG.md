@@ -38,7 +38,8 @@ of these features.
 - Added `disable_antialiasing` rc variable.
 - Added `editor_run_in_terminal` rc variable.
 - VHDL records (e.g. in FST files written by NVC) are listed in the signals pane and are
-  added as collapsible groups with nested records as nested groups.
+  added as collapsible groups with nested records as nested groups. The group row of a
+  record shows its composite value, e.g. `{1 05 run {0 3}}`.
 
 ### Removed
 

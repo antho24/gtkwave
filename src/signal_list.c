@@ -826,6 +826,20 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
     return GDK_EVENT_PROPAGATE;
 }
 
+/* Returns the trace after which items dropped at DROP_POSITION are inserted.  */
+static GwTrace *drop_position_to_trace(GwSignalList *signal_list, int drop_position)
+{
+    GwTrace *t = gw_signal_list_get_trace(signal_list, drop_position - 1);
+
+    // After the last visible trace insert at the end of the list, i.e. after the hidden ends of
+    // composite groups and records instead of inside of them.
+    if (t != NULL && GiveNextTrace(t) == NULL && !IsSelected(GLOBALS->traces.last)) {
+        t = GLOBALS->traces.last;
+    }
+
+    return t;
+}
+
 static int y_to_drop_position(int y)
 {
     // Shift the position of the drop targets up by one half row height to make
@@ -952,7 +966,7 @@ static void drag_data_received(GtkWidget *widget,
                 CutBuffer();
                 PrependBuffer();
             } else {
-                GwTrace *t = gw_signal_list_get_trace(signal_list, drop_position - 1);
+                GwTrace *t = drop_position_to_trace(signal_list, drop_position);
 
                 // Search upward for the first non selected trace.
                 // CutBuffer would otherwise remove the trace that determines the
@@ -991,7 +1005,7 @@ static void drag_data_received(GtkWidget *widget,
                 GwTrace *t;
                 gboolean prepend;
                 if (drop_position > 0) {
-                    t = gw_signal_list_get_trace(signal_list, drop_position - 1);
+                    t = drop_position_to_trace(signal_list, drop_position);
                     prepend = FALSE;
                 } else {
                     t = GLOBALS->traces.first;

@@ -28,6 +28,7 @@
 #include "menu.h"
 #include "tcl_helper.h"
 #include "signal_list.h"
+#include "record.h"
 
 #if !defined __MINGW32__
 #include <sys/types.h>
@@ -2015,13 +2016,16 @@ char *emit_gtkwave_savefile_formatted_entries_in_tcl_list(GwTrace *t, gboolean u
             }
         }
 
-        if ((t->flags != def) || (is_first)) {
+        TraceFlagsType flags = record_trace_save_flags(t);
+
+        if ((flags != def) || (is_first)) {
             is_first = 0;
             if ((t->flags & TR_PTRANSLATED) && (!t->p_filter))
                 t->flags &= (~TR_PTRANSLATED);
             if ((t->flags & TR_FTRANSLATED) && (!t->f_filter))
                 t->flags &= (~TR_FTRANSLATED);
-            one_entry = make_message("@%" TRACEFLAGSPRIFMT "\n", (def = t->flags) & ~TR_HIGHLIGHT);
+            flags = record_trace_save_flags(t);
+            one_entry = make_message("@%" TRACEFLAGSPRIFMT "\n", (def = flags) & ~TR_HIGHLIGHT);
             WAVE_OE_ME
             if (!flag_skip)
                 prev_flags = def;
@@ -2043,7 +2047,7 @@ char *emit_gtkwave_savefile_formatted_entries_in_tcl_list(GwTrace *t, gboolean u
         }
         prevshift = t->shift;
 
-        if (!(t->flags & (TR_BLANK | TR_ANALOG_BLANK_STRETCH))) {
+        if (!(flags & (TR_BLANK | TR_ANALOG_BLANK_STRETCH))) {
             if (t->flags & TR_FTRANSLATED) {
                 if (t->f_filter && GLOBALS->filesel_filter[t->f_filter]) {
                     one_entry =

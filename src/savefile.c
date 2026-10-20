@@ -13,6 +13,7 @@
 #include "lx2.h"
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
+#include "record.h"
 #endif
 
 #if defined( __linux__ ) || defined(__gnu_hurd__)
@@ -238,14 +239,17 @@ void write_save_helper(const char *savnam, FILE *wave)
 
     t = GLOBALS->traces.first;
     while (t) {
-        if ((t->flags != def) || (t == GLOBALS->traces.first)) {
+        TraceFlagsType flags = record_trace_save_flags(t);
+
+        if ((flags != def) || (t == GLOBALS->traces.first)) {
             if ((t->flags & TR_PTRANSLATED) && (!t->p_filter))
                 t->flags &= (~TR_PTRANSLATED);
             if ((t->flags & TR_FTRANSLATED) && (!t->f_filter))
                 t->flags &= (~TR_FTRANSLATED);
             if ((t->flags & TR_TTRANSLATED) && (!t->t_filter))
                 t->flags &= (~TR_TTRANSLATED);
-            fprintf(wave, "@%" TRACEFLAGSPRIFMT "\n", def = t->flags);
+            flags = record_trace_save_flags(t);
+            fprintf(wave, "@%" TRACEFLAGSPRIFMT "\n", def = flags);
         }
 
         if ((t->shift) || ((prevshift) && (!t->shift))) {
@@ -253,7 +257,7 @@ void write_save_helper(const char *savnam, FILE *wave)
         }
         prevshift = t->shift;
 
-        if (!(t->flags & (TR_BLANK | TR_ANALOG_BLANK_STRETCH))) {
+        if (!(flags & (TR_BLANK | TR_ANALOG_BLANK_STRETCH))) {
             if (t->t_color) {
                 fprintf(wave, "[color] %d\n", t->t_color);
             }

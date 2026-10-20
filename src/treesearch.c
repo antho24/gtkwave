@@ -1001,7 +1001,7 @@ static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
     SortedTreeNode *fields = sort_tree_children(facs, t, decl_order, &n);
 
     if (n > 0) {
-        add_record_group_marker(name, TR_GRP_BEGIN | TR_CLOSED);
+        add_record_group_marker(name, TR_GRP_BEGIN | TR_CLOSED | TR_RECORD);
 
         for (gint i = 0; i < n; i++) {
             GwTreeNode *c = fields[i].t;

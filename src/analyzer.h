@@ -147,6 +147,7 @@ enum TraceEntFlagBits
     TR_ENUM_B,
     TR_CURSOR_B,
     TR_FFO_B,
+    TR_RECORD_B,
 
     TR_RSVD_B /* for use internally such as temporary caching of highlighting, not for use in traces
                */
@@ -202,6 +203,7 @@ enum TraceEntFlagBits
 
 #define TR_CURSOR (UINT64_C(1) << TR_CURSOR_B)
 #define TR_FFO (UINT64_C(1) << TR_FFO_B)
+#define TR_RECORD (UINT64_C(1) << TR_RECORD_B)
 
 #define TR_ANALOGMASK (TR_ANALOG_STEP | TR_ANALOG_INTERPOLATED)
 

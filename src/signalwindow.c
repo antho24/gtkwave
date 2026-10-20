@@ -17,6 +17,7 @@
 #include "debug.h"
 #include "signal_list.h"
 #include "gw-wave-view.h"
+#include "record.h"
 
 /* GDK_KEY_equal defined from gtk2 2.22 onwards. */
 #ifndef GDK_KEY_equal
@@ -266,6 +267,7 @@ void redraw_signals_and_waves(void)
         return;
     }
 
+    record_traces_refresh();
     UpdateTracesVisible();
 
     MaxSignalLength();

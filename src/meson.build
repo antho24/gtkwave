@@ -44,6 +44,7 @@ gtkwave_sources = [
     'print.c',
     'ptranslate.c',
     'rc.c',
+    'record.c',
     'regex.c',
     'renderopt.c',
     'savefile.c',

@@ -38,6 +38,8 @@ struct _GwTrace
     unsigned int t_color; /* trace color index */
     unsigned char t_fpdecshift; /* for fixed point decimal */
 
+    guint64 record_sig; /* fields signature of a VHDL record group (see record.c) */
+
     unsigned is_cursor : 1; /* set to mark a cursor trace */
     unsigned is_alias : 1; /* set when it's an alias (safe to free t->name then) */
     unsigned vector : 1; /* 1 if bit vector, 0 if node */
@@ -47,4 +49,5 @@ struct _GwTrace
     unsigned is_sort_group : 1; /* only used for sorting purposes */
     unsigned t_filter_converted : 1; /* used to mark that data conversion already occurred if
                                         t_filter != 0*/
+    unsigned record_node_owned : 1; /* n.nd is a synthesized VHDL record node (see record.c) */
 };
