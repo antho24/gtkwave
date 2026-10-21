@@ -4,7 +4,7 @@
 
 const gchar *gw_var_type_to_string(GwVarType self)
 {
-    g_return_val_if_fail(self >= 0 && self < GW_VAR_TYPE_MAX, "");
+    g_return_val_if_fail(self >= 0 && self <= GW_VAR_TYPE_MAX, "");
 
     static const char *STRINGS[] = {
         "",        "event", "integer", "parm",   "real",     "real_parm", "reg",    "supply0",
@@ -18,7 +18,7 @@ const gchar *gw_var_type_to_string(GwVarType self)
 
 const gchar *gw_var_data_type_to_string(GwVarDataType self)
 {
-    g_return_val_if_fail(self >= 0 && self < GW_VAR_DATA_TYPE_MAX, "");
+    g_return_val_if_fail(self >= 0 && self <= GW_VAR_DATA_TYPE_MAX, "");
 
     static const gchar *STRINGS[] = {"",
                                      "boolean",
@@ -43,7 +43,7 @@ const gchar *gw_var_data_type_to_string(GwVarDataType self)
 
 const gchar *gw_var_dir_to_string(GwVarDir self)
 {
-    g_return_val_if_fail(self >= 0 && self < GW_VAR_DIR_MAX, "");
+    g_return_val_if_fail(self >= 0 && self <= GW_VAR_DIR_MAX, "");
 
     static const gchar *STRINGS[] = {"", "I", "O", "IO", "B", "L"};
 

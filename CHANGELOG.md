@@ -90,5 +90,7 @@ of these features.
 - Fixed display update issues on Wayland.
 - Fixed slow redrawing of dense waveforms.
 - Compiler fix for `__GTK_SOCKET_H__` availability.
+- Fixed the `++` and `--` direction filters of the signals pane, which matched linkage
+  signals instead of signals without a direction.
 
 [Unreleased]: https://github.com/gtkwave/gtkwave/compare/v3.3.116...HEAD
