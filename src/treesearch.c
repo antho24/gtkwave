@@ -175,6 +175,40 @@ static gboolean is_record_scope(GwTreeNode *t)
            (t->kind == GW_TREE_KIND_VHDL_ST_RECORD || is_record_array_scope(t));
 }
 
+/* Direction of record scope T: the direction of its first field, so that a
+   record port is filtered like the other ports.  */
+static int record_scope_dir(GwFacs *facs, GwTreeNode *t)
+{
+    while (t != NULL && t->t_which < 0) {
+        t = t->child;
+    }
+    if (t == NULL) {
+        return GW_VAR_DIR_IMPLICIT;
+    }
+
+    int vardir = gw_facs_get(facs, t->t_which)->n->vardir;
+    if ((vardir < 0) || (vardir > GW_VAR_DIR_MAX)) {
+        vardir = GW_VAR_DIR_IMPLICIT;
+    }
+    return vardir;
+}
+
+/* Does the signals filter (regex, optionally prefixed by "+dir+" or
+   "-dir-") match NAME with direction VARDIR?  */
+static gboolean sig_filter_matches(const char *name, int vardir)
+{
+    if (GLOBALS->filter_str_treesearch_gtk2_c_1 == NULL) {
+        return TRUE;
+    }
+    if (!GLOBALS->filter_matlen_treesearch_gtk2_c_1) {
+        return !GLOBALS->filter_noregex_treesearch_gtk2_c_1 &&
+               wave_regex_match(name, WAVE_REGEX_TREE);
+    }
+    return ((GLOBALS->filter_typ_treesearch_gtk2_c_1 == vardir) ^
+            GLOBALS->filter_typ_polarity_treesearch_gtk2_c_1) &&
+           wave_regex_match(name, WAVE_REGEX_TREE);
+}
+
 void fill_sig_store(void)
 {
     GwTreeNode *t;
@@ -209,10 +243,8 @@ void fill_sig_store(void)
             t_prev = NULL;
 
             /* records are listed so that they can be added as a whole */
-            if (is_record_scope(t) && ((GLOBALS->filter_str_treesearch_gtk2_c_1 == NULL) ||
-                                       ((!GLOBALS->filter_noregex_treesearch_gtk2_c_1) &&
-                                        (!GLOBALS->filter_matlen_treesearch_gtk2_c_1) &&
-                                        wave_regex_match(t->name, WAVE_REGEX_TREE)))) {
+            int record_dir = is_record_scope(t) ? record_scope_dir(facs, t) : 0;
+            if (is_record_scope(t) && sig_filter_matches(t->name, record_dir)) {
                 gtk_list_store_prepend(GLOBALS->sig_store_treesearch_gtk2_c_1, &iter);
                 gtk_list_store_set(GLOBALS->sig_store_treesearch_gtk2_c_1,
                                    &iter,
@@ -223,7 +255,7 @@ void fill_sig_store(void)
                                    TYPE_COLUMN,
                                    is_record_array_scope(t) ? "array" : "record",
                                    DIR_COLUMN,
-                                   "",
+                                   gw_var_dir_to_string(record_dir),
                                    DTYPE_COLUMN,
                                    is_record_array_scope(t) ? "array" : "record",
                                    -1);
