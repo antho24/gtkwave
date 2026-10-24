@@ -79,6 +79,33 @@ static void notify_increase(GObject *self, GParamSpec *pspec, gpointer user_data
     (*counter)++;
 }
 
+static void test_locked(void)
+{
+    guint counter = 0;
+
+    GwMarker *marker = gw_marker_new("marker");
+    g_signal_connect(marker, "notify::locked", G_CALLBACK(notify_increase), &counter);
+    g_assert_false(gw_marker_is_locked(marker));
+
+    gw_marker_set_locked(marker, TRUE);
+    g_assert_true(gw_marker_is_locked(marker));
+    g_assert_cmpint(counter, ==, 1);
+
+    gw_marker_set_locked(marker, 2);
+    g_assert_true(gw_marker_is_locked(marker));
+    g_assert_cmpint(counter, ==, 1);
+
+    // locking doesn't change the position or the enabled state
+    g_assert_cmpint(gw_marker_get_position(marker), ==, 0);
+    g_assert_false(gw_marker_is_enabled(marker));
+
+    gw_marker_set_locked(marker, FALSE);
+    g_assert_false(gw_marker_is_locked(marker));
+    g_assert_cmpint(counter, ==, 2);
+
+    g_object_unref(marker);
+}
+
 static void test_notify_display_name(void)
 {
     guint counter_alias = 0;
@@ -115,6 +142,7 @@ int main(int argc, char *argv[])
 
     g_test_add_func("/marker/position", test_position);
     g_test_add_func("/marker/enabled", test_enabled);
+    g_test_add_func("/marker/locked", test_locked);
     g_test_add_func("/marker/name_and_alias", test_name_and_alias);
     g_test_add_func("/marker/nonnull_name", test_nonnull_name);
     g_test_add_func("/marker/notify_display_name", test_notify_display_name);

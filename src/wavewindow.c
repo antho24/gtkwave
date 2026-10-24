@@ -21,6 +21,7 @@
 #include "main.h"
 #include "signal_list.h"
 #include "gw-wave-view.h"
+#include "gw-marker-bar.h"
 
 #if !defined _ISOC99_SOURCE
 #define _ISOC99_SOURCE 1
@@ -1794,14 +1795,23 @@ GtkWidget *create_wavewindow(void)
                             GTK_POS_RIGHT,
                             1,
                             1);
+    GLOBALS->marker_bar = gw_marker_bar_new();
+    gtk_widget_set_hexpand(GLOBALS->marker_bar, TRUE);
+    gtk_grid_attach_next_to(GTK_GRID(grid),
+                            GLOBALS->marker_bar,
+                            GLOBALS->wavearea,
+                            GTK_POS_BOTTOM,
+                            1,
+                            1);
     gtk_grid_attach_next_to(GTK_GRID(grid),
                             GLOBALS->hscroll_wavewindow_c_2,
-                            GLOBALS->wavearea,
+                            GLOBALS->marker_bar,
                             GTK_POS_BOTTOM,
                             1,
                             1);
 
     gtk_widget_show_all(grid);
+    gtk_widget_set_visible(GLOBALS->marker_bar, GLOBALS->show_marker_bar);
 
     return grid;
 }

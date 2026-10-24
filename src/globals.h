@@ -605,6 +605,9 @@ struct Global
     gpointer wave_vslider2; /* from wavewindow.c 681 */
     gpointer wave_hslider; /* from wavewindow.c 682 */
     int named_marker_lock_idx; /* from menu.c */
+    GtkWidget *marker_bar; /* from wavewindow.c */
+    char show_marker_bar; /* from menu.c */
+    GPtrArray *bookmarks; /* from bookmarks.c */
     int which_t_color;
     char fill_in_smaller_rgb_areas_wavewindow_c_1; /* from wavewindow.c 719 */
     GwTime prev_markertime; /* from wavewindow.c */

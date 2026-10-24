@@ -770,6 +770,7 @@ int main_2(int opt_vcd, int argc, char *argv[])
         GLOBALS->ps_maxveclen = old_g->ps_maxveclen;
         GLOBALS->show_base = old_g->show_base;
         GLOBALS->display_grid = old_g->display_grid;
+        GLOBALS->show_marker_bar = old_g->show_marker_bar;
         GLOBALS->fullscreen = old_g->fullscreen;
         GLOBALS->show_toolbar = old_g->show_toolbar;
         GLOBALS->time_box = old_g->time_box;

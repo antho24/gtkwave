@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include "record.h"
 #endif
+#include "bookmarks.h"
 
 #if defined( __linux__ ) || defined(__gnu_hurd__)
 #ifndef _XOPEN_SOURCE
@@ -193,15 +194,23 @@ void write_save_helper(const char *savnam, FILE *wave)
         GwMarker *marker = gw_named_markers_get(markers, i);
         if (gw_marker_is_enabled(marker)) {
             const gchar *name = gw_marker_get_name(marker);
-            const gchar *alias = gw_marker_get_name(marker);
+            const gchar *alias = gw_marker_get_alias(marker);
 
-            if (strlen(name) < 2) {
-                fprintf(wave, "[markername] %s%s\n", name, alias);
-            } else {
-                fprintf(wave, "[markername_long] %s %s\n", name, alias);
+            if (alias != NULL) {
+                if (strlen(name) < 2) {
+                    fprintf(wave, "[markername] %s%s\n", name, alias);
+                } else {
+                    fprintf(wave, "[markername_long] %s %s\n", name, alias);
+                }
+            }
+
+            if (gw_marker_is_locked(marker)) {
+                fprintf(wave, "[markerlock] %s\n", name);
             }
         }
     }
+
+    bookmarks_write_save_file(wave);
 
     if (GLOBALS->ruler_step) {
         fprintf(wave,
@@ -627,6 +636,13 @@ bot:
     return (rp);
 }
 
+static void unlock_marker(gpointer data, gpointer user_data)
+{
+    (void)user_data;
+
+    gw_marker_set_locked(GW_MARKER(data), FALSE);
+}
+
 int read_save_helper(char *wname,
                      char **dumpfile,
                      char **savefile,
@@ -783,6 +799,10 @@ int read_save_helper(char *wname,
 
         rc = 0;
         GLOBALS->which_t_color = 0;
+        bookmarks_clear();
+        gw_named_markers_foreach(gw_project_get_named_markers(GLOBALS->project),
+                                 unlock_marker,
+                                 NULL);
         while ((iline = fgetmalloc(wave))) {
             parsewavline(iline, NULL, 0);
             GLOBALS->strace_ctx->shadow_encountered_parsewavline |=
@@ -1525,6 +1545,23 @@ int parsewavline(char *w, char *alias, int depth)
                     }
                 }
             }
+        } else if (strcmp(w2, "markerlock") == 0) {
+            gchar *name = g_strstrip(g_strdup(w));
+
+            // bijective_marker_id_string_hash() only accepts short names
+            gsize name_len = strlen(name);
+            if (name_len > 0 && name_len < 8 && bijective_marker_id_string_len(name) == name_len) {
+                GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
+                GwMarker *marker =
+                    gw_named_markers_get(markers, bijective_marker_id_string_hash(name));
+                if (marker != NULL) {
+                    gw_marker_set_locked(marker, TRUE);
+                }
+            }
+
+            g_free(name);
+        } else if (strcmp(w2, "bookmark") == 0) {
+            bookmarks_parse_save_file_line(w);
         } else if (strcmp(w2, "dumpfile") == 0) {
             /* nothing here currently...only finder/DnD processes these externally */
         } else if (strcmp(w2, "savefile") == 0) {

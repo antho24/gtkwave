@@ -502,6 +502,7 @@ typedef struct
     GwWaveView *widget;
     cairo_t *cr;
     GwColor color;
+    GwColor attached_color;
 } DrawNamedMarkerData;
 
 static void draw_named_marker(gpointer data, gpointer user_data)
@@ -527,17 +528,28 @@ static void draw_named_marker(gpointer data, gpointer user_data)
 
     cairo_t *cr = draw_data->cr;
 
-    static const double DASHES[] = {5.0, 3.0};
-    cairo_set_dash(cr, DASHES, G_N_ELEMENTS(DASHES), 0.0);
+    // the marker the primary marker is attached to (Markers/Locking) is shown in the primary
+    // marker color, locked markers are drawn with a solid line
+    GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
+    GwColor color = draw_data->color;
+    if (GLOBALS->named_marker_lock_idx >= 0 &&
+        gw_named_markers_get(markers, GLOBALS->named_marker_lock_idx) == marker) {
+        color = draw_data->attached_color;
+    }
 
-    XXX_gdk_draw_line(cr, draw_data->color, x, GLOBALS->fontheight - 1, x, GLOBALS->waveheight - 1);
+    static const double DASHES[] = {5.0, 3.0};
+    if (!gw_marker_is_locked(marker)) {
+        cairo_set_dash(cr, DASHES, G_N_ELEMENTS(DASHES), 0.0);
+    }
+
+    XXX_gdk_draw_line(cr, color, x, GLOBALS->fontheight - 1, x, GLOBALS->waveheight - 1);
     cairo_set_dash(cr, DASHES, 0, 0);
 
     const gchar *name = gw_marker_get_display_name(marker);
     gint text_width = font_engine_string_measure(GLOBALS->wavefont_smaller, name);
     XXX_font_engine_draw_string(cr,
                                 GLOBALS->wavefont_smaller,
-                                &draw_data->color,
+                                &color,
                                 x - text_width / 2,
                                 GLOBALS->fontheight - 2,
                                 name);
@@ -583,18 +595,19 @@ static void draw_named_markers(GwWaveView *self, cairo_t *cr, GwWaveformColors *
         .widget = self,
         .cr = cr,
         .color = colors->marker_named,
+        .attached_color = colors->marker_primary,
     };
 
     GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
     gw_named_markers_foreach(markers, draw_named_marker, &data);
 
-    // TODO: draw locked marker on top
-    // if (GLOBALS->named_marker_lock_idx >= 0) {
-    //     render_individual_named_marker(cr,
-    //                                    GLOBALS->named_marker_lock_idx,
-    //                                    GLOBALS->rgb_gc.gc_umark_wavewindow_c_1,
-    //                                    1);
-    // }
+    // draw the attached marker on top
+    if (GLOBALS->named_marker_lock_idx >= 0) {
+        GwMarker *attached = gw_named_markers_get(markers, GLOBALS->named_marker_lock_idx);
+        if (attached != NULL) {
+            draw_named_marker(attached, &data);
+        }
+    }
 }
 
 static gboolean gw_wave_view_draw(GtkWidget *widget, cairo_t *cr)
@@ -674,6 +687,10 @@ static gboolean gw_wave_view_draw(GtkWidget *widget, cairo_t *cr)
 
     draw_marker(self, cr, colors);
     draw_named_markers(self, cr, colors);
+
+    if (GLOBALS->marker_bar != NULL) {
+        gtk_widget_queue_draw(GLOBALS->marker_bar);
+    }
 
     /* seems to cause a conflict flipping back so don't! */
     /* set_GLOBALS(g_old); */

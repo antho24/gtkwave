@@ -16,6 +16,9 @@ GwTime gw_marker_get_position(GwMarker *self);
 void gw_marker_set_enabled(GwMarker *self, gboolean enabled);
 gboolean gw_marker_is_enabled(GwMarker *self);
 
+void gw_marker_set_locked(GwMarker *self, gboolean locked);
+gboolean gw_marker_is_locked(GwMarker *self);
+
 void gw_marker_set_alias(GwMarker *self, const gchar *alias);
 const gchar *gw_marker_get_alias(GwMarker *self);
 

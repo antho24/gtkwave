@@ -13,6 +13,7 @@ struct _GwMarker
 
     GwTime position;
     gboolean enabled;
+    gboolean locked;
     gchar *name;
     gchar *alias;
 };
@@ -23,6 +24,7 @@ enum
 {
     PROP_POSITION = 1,
     PROP_ENABLED,
+    PROP_LOCKED,
     PROP_NAME,
     PROP_ALIAS,
     PROP_DISPLAY_NAME,
@@ -56,6 +58,10 @@ static void gw_marker_set_property(GObject *object,
             gw_marker_set_enabled(self, g_value_get_boolean(value));
             break;
 
+        case PROP_LOCKED:
+            gw_marker_set_locked(self, g_value_get_boolean(value));
+            break;
+
         case PROP_NAME:
             self->name = g_value_dup_string(value);
             if (self->name == NULL) {
@@ -87,6 +93,10 @@ static void gw_marker_get_property(GObject *object,
 
         case PROP_ENABLED:
             g_value_set_boolean(value, gw_marker_is_enabled(self));
+            break;
+
+        case PROP_LOCKED:
+            g_value_set_boolean(value, gw_marker_is_locked(self));
             break;
 
         case PROP_NAME:
@@ -125,6 +135,13 @@ static void gw_marker_class_init(GwMarkerClass *klass)
         g_param_spec_boolean("enabled",
                              "Enabled",
                              "Wether the marker is enabled",
+                             FALSE,
+                             G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+
+    properties[PROP_LOCKED] =
+        g_param_spec_boolean("locked",
+                             "Locked",
+                             "Wether the marker is locked against moving it",
                              FALSE,
                              G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
 
@@ -236,6 +253,41 @@ gboolean gw_marker_is_enabled(GwMarker *self)
     g_return_val_if_fail(GW_IS_MARKER(self), FALSE);
 
     return self->enabled;
+}
+
+/**
+ * gw_marker_set_locked:
+ * @self: A #GwMarker.
+ * @locked: Whether the marker should be locked.
+ *
+ * Locks or unlocks the marker. A locked marker keeps its position when it is dragged with the
+ * mouse or when the markers are collected.
+ */
+void gw_marker_set_locked(GwMarker *self, gboolean locked)
+{
+    g_return_if_fail(GW_IS_MARKER(self));
+
+    locked = !!locked;
+    if (self->locked != locked) {
+        self->locked = locked;
+
+        g_object_notify_by_pspec(G_OBJECT(self), properties[PROP_LOCKED]);
+    }
+}
+
+/**
+ * gw_marker_is_locked:
+ * @self: A #GwMarker.
+ *
+ * Returns wether the marker is locked.
+ *
+ * Returns: %TRUE if the marker is locked.
+ */
+gboolean gw_marker_is_locked(GwMarker *self)
+{
+    g_return_val_if_fail(GW_IS_MARKER(self), FALSE);
+
+    return self->locked;
 }
 
 /**

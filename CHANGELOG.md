@@ -47,6 +47,20 @@ of these features.
   horizontal scrollbar.
 - The full hierarchical name of the signal under the pointer in the waveform or signal list
   is shown at the bottom of the main window.
+- A marker bar below the waves shows the time of the primary, baseline and named markers
+  and the time between neighboring markers. Markers can be dragged in the bar, a
+  double-click adds a named marker and a right-click opens a menu to lock, rename or delete
+  a marker. Dragged and added markers snap to the nearest edge of the visible signals or to
+  another marker within the `cursor_snap` distance, Shift places them freely. The tooltip
+  of a marker shows the time to every other marker. The bar can be hidden with
+  View → Show Marker Bar.
+- Named markers can be locked in the marker bar or in the named markers dialog. Locked
+  markers are drawn with a solid line and a padlock, can't be dragged or collected and are
+  stored in save files (`[markerlock]`).
+- Bookmarks for time ranges: Time → Bookmarks → Add Bookmark (Ctrl+Shift+B) bookmarks the
+  visible time range, the Bookmarks menu shows a bookmark again without moving the markers
+  and Manage Bookmarks renames and deletes them. Bookmarks are stored in save files
+  (`[bookmark]`).
 
 ### Removed
 
@@ -92,5 +106,9 @@ of these features.
 - Compiler fix for `__GTK_SOCKET_H__` availability.
 - Fixed the `++` and `--` direction filters of the signals pane, which matched linkage
   signals instead of signals without a direction.
+- Fixed Markers → Locking (Q, W and O), which aborted GTKWave. Moving the primary marker
+  again moves the named marker it is attached to.
+- Fixed marker aliases, which were saved as the name of the marker.
+- Fixed the named markers dialog, which removed markers before the visible time range.
 
 [Unreleased]: https://github.com/gtkwave/gtkwave/compare/v3.3.116...HEAD

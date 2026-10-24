@@ -261,17 +261,21 @@ void update_time_box(void)
         }
     }
 
-    // TODO: reenable marker locking
-    // if (GLOBALS->named_marker_lock_idx > -1) {
-    //     if (GLOBALS->tims.marker >= 0) {
-    //         int ent_idx = GLOBALS->named_marker_lock_idx;
+    /* the named marker the primary marker is attached to follows the primary marker */
+    if (GLOBALS->named_marker_lock_idx >= 0) {
+        GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
+        GwMarker *attached = gw_named_markers_get(markers, GLOBALS->named_marker_lock_idx);
 
-    //         if (GLOBALS->named_markers[ent_idx] != GLOBALS->tims.marker) {
-    //             GLOBALS->named_markers[ent_idx] = GLOBALS->tims.marker;
-    //             gw_wave_view_force_redraw(GW_WAVE_VIEW(GLOBALS->wavearea));
-    //         }
-    //     }
-    // }
+        if (attached == NULL || !gw_marker_is_enabled(attached)) {
+            GLOBALS->named_marker_lock_idx = -1;
+        } else if (gw_marker_is_enabled(primary_marker) && !gw_marker_is_locked(attached) &&
+                   gw_marker_get_position(attached) != gw_marker_get_position(primary_marker)) {
+            gw_marker_set_position(attached, gw_marker_get_position(primary_marker));
+            if (GLOBALS->wavearea != NULL) {
+                gtk_widget_queue_draw(GLOBALS->wavearea);
+            }
+        }
+    }
 }
 
 void update_currenttime(GwTime val)

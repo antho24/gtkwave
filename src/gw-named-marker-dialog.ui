@@ -12,7 +12,7 @@
                         <property name="shadow-type">in</property>
                         <property name="visible">1</property>
                         <property name="vexpand">true</property>
-                        <property name="width-request">400</property>
+                        <property name="width-request">520</property>
                         <property name="height-request">400</property>
                         <child>
                             <object class="GtkGrid" id="grid">

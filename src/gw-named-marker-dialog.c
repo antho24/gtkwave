@@ -13,6 +13,7 @@ struct _GwNamedMarkerDialog
 
     GPtrArray *time_entries;
     GPtrArray *alias_entries;
+    GPtrArray *lock_buttons;
 };
 
 G_DEFINE_TYPE(GwNamedMarkerDialog, gw_named_marker_dialog, GTK_TYPE_DIALOG)
@@ -42,6 +43,7 @@ static void gw_named_marker_dialog_finalize(GObject *object)
 
     g_ptr_array_free(self->time_entries, TRUE);
     g_ptr_array_free(self->alias_entries, TRUE);
+    g_ptr_array_free(self->lock_buttons, TRUE);
 
     G_OBJECT_CLASS(gw_named_marker_dialog_parent_class)->finalize(object);
 }
@@ -108,6 +110,7 @@ static void gw_named_marker_dialog_response(GtkDialog *dialog, gint response_id)
 
             GtkEntry *time_entry = g_ptr_array_index(self->time_entries, i);
             GtkEntry *alias_entry = g_ptr_array_index(self->alias_entries, i);
+            GtkToggleButton *lock_button = g_ptr_array_index(self->lock_buttons, i);
 
             const gchar *time_str = gtk_entry_get_text(time_entry);
             const gchar *alias_str = gtk_entry_get_text(alias_entry);
@@ -117,11 +120,19 @@ static void gw_named_marker_dialog_response(GtkDialog *dialog, gint response_id)
 
             GwTime temp = unformat_time(time_str, time_dimension) - global_time_offset;
 
-            if (temp >= GLOBALS->tims.start && temp <= GLOBALS->tims.last) {
+            gw_marker_set_locked(marker, FALSE);
+
+            // an empty time disables the marker
+            if (time_str[0] == '\0') {
+                continue;
+            }
+
+            if (temp >= GLOBALS->tims.first && temp <= GLOBALS->tims.last) {
                 if (gw_named_markers_find(self->markers, temp) == NULL) {
                     gw_marker_set_enabled(marker, TRUE);
                     gw_marker_set_position(marker, temp);
                     gw_marker_set_alias(marker, alias_str);
+                    gw_marker_set_locked(marker, gtk_toggle_button_get_active(lock_button));
                 }
             }
         }
@@ -185,6 +196,7 @@ static void gw_named_marker_dialog_init(GwNamedMarkerDialog *self)
 
     self->time_entries = g_ptr_array_new();
     self->alias_entries = g_ptr_array_new();
+    self->lock_buttons = g_ptr_array_new();
 }
 
 static void gw_named_marker_dialog_constructed(GObject *object)
@@ -201,7 +213,7 @@ static void gw_named_marker_dialog_constructed(GObject *object)
 
         if (i != 0) {
             GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
-            gtk_grid_attach_next_to(GTK_GRID(self->grid), separator, NULL, GTK_POS_BOTTOM, 3, 1);
+            gtk_grid_attach_next_to(GTK_GRID(self->grid), separator, NULL, GTK_POS_BOTTOM, 4, 1);
         }
 
         const gchar *name = gw_marker_get_name(marker);
@@ -221,14 +233,25 @@ static void gw_named_marker_dialog_constructed(GObject *object)
         gtk_entry_set_placeholder_text(GTK_ENTRY(alias_entry), name);
         gtk_entry_set_max_length(GTK_ENTRY(alias_entry), 48);
         gtk_entry_set_activates_default(GTK_ENTRY(alias_entry), TRUE);
-        gtk_widget_set_margin_end(alias_entry, 6);
         gtk_widget_set_hexpand(alias_entry, TRUE);
         gtk_grid_attach_next_to(GTK_GRID(self->grid), alias_entry, time_entry, GTK_POS_RIGHT, 1, 1);
+
+        GtkWidget *lock_button = gtk_check_button_new_with_label("Locked");
+        gtk_widget_set_tooltip_text(lock_button, "A locked marker can't be dragged or collected.");
+        gtk_widget_set_margin_end(lock_button, 6);
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(lock_button), gw_marker_is_locked(marker));
+        gtk_grid_attach_next_to(GTK_GRID(self->grid),
+                                lock_button,
+                                alias_entry,
+                                GTK_POS_RIGHT,
+                                1,
+                                1);
 
         g_signal_connect(time_entry, "focus-out-event", G_CALLBACK(on_time_entry_focus_out), NULL);
 
         g_ptr_array_add(self->time_entries, time_entry);
         g_ptr_array_add(self->alias_entries, alias_entry);
+        g_ptr_array_add(self->lock_buttons, lock_button);
 
         if (gw_marker_is_enabled(marker)) {
             GwTimeDimension time_dimension = gw_dump_file_get_time_dimension(GLOBALS->dump_file);

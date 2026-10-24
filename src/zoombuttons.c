@@ -283,13 +283,71 @@ void service_zoom_full(GtkWidget *text, gpointer data)
     DEBUG(printf("Zoombuttons Full\n"));
 }
 
-void service_dragzoom(GwTime time1, GwTime time2) /* the function you've been waiting for... */
+/* zooms so that time1 to time2 fills the wave window */
+static void zoom_to_range(GwTime time1, GwTime time2, gboolean disable_single_marker)
 {
     gdouble estimated;
     int fixedwidth;
-    GwTime temp;
     GtkAdjustment *hadj;
     GwTrace *t;
+
+    if (GLOBALS->wavewidth > 4) {
+        fixedwidth = GLOBALS->wavewidth - 4;
+    } else {
+        fixedwidth = GLOBALS->wavewidth;
+    }
+    estimated = -log(((gdouble)(time2 - time1 + 1)) / ((gdouble)fixedwidth) * ((gdouble)200.0)) /
+                log(GLOBALS->zoombase);
+    if (estimated > ((gdouble)(0.0)))
+        estimated = ((gdouble)(0.0));
+
+    GLOBALS->tims.prevzoom = GLOBALS->tims.zoom;
+    GLOBALS->tims.timecache = GLOBALS->tims.laststart = GLOBALS->tims.start = time_trunc(time1);
+
+    for (t = GLOBALS->traces.first; t;
+         t = t->t_next) /* have to nuke string refs so printout is ok! */
+    {
+        if (t->asciivalue) {
+            free_2(t->asciivalue);
+            t->asciivalue = NULL;
+        }
+    }
+
+    for (t = GLOBALS->traces.buffer; t; t = t->t_next) {
+        if (t->asciivalue) {
+            free_2(t->asciivalue);
+            t->asciivalue = NULL;
+        }
+    }
+
+    if (disable_single_marker) {
+        GwMarker *primary_marker = gw_project_get_primary_marker(GLOBALS->project);
+        GwMarker *baseline_marker = gw_project_get_baseline_marker(GLOBALS->project);
+
+        if (!(gw_marker_is_enabled(baseline_marker) && gw_marker_is_enabled(primary_marker))) {
+            gw_marker_set_enabled(primary_marker, FALSE);
+            update_time_box();
+        }
+    }
+    GLOBALS->signalwindow_width_dirty = 1;
+    MaxSignalLength();
+
+    hadj = GTK_ADJUSTMENT(GLOBALS->wave_hslider);
+    gtk_adjustment_set_value(hadj, time1);
+
+    calczoom(estimated);
+    GLOBALS->tims.zoom = estimated;
+
+    fix_wavehadj();
+
+    g_signal_emit_by_name(GTK_ADJUSTMENT(GLOBALS->wave_hslider), "changed"); /* force zoom update */
+    g_signal_emit_by_name(GTK_ADJUSTMENT(GLOBALS->wave_hslider),
+                          "value_changed"); /* force zoom update */
+}
+
+void service_dragzoom(GwTime time1, GwTime time2) /* the function you've been waiting for... */
+{
+    GwTime temp;
     int dragzoom_ok = 1;
 
     if (time2 < time1) {
@@ -308,59 +366,30 @@ void service_dragzoom(GwTime time1, GwTime time2) /* the function you've been wa
 
     if ((time2 > time1) && (dragzoom_ok)) /* ensure at least 1 tick and dragzoom_threshold if set */
     {
-        if (GLOBALS->wavewidth > 4) {
-            fixedwidth = GLOBALS->wavewidth - 4;
-        } else {
-            fixedwidth = GLOBALS->wavewidth;
-        }
-        estimated =
-            -log(((gdouble)(time2 - time1 + 1)) / ((gdouble)fixedwidth) * ((gdouble)200.0)) /
-            log(GLOBALS->zoombase);
-        if (estimated > ((gdouble)(0.0)))
-            estimated = ((gdouble)(0.0));
-
-        GLOBALS->tims.prevzoom = GLOBALS->tims.zoom;
-        GLOBALS->tims.timecache = GLOBALS->tims.laststart = GLOBALS->tims.start = time_trunc(time1);
-
-        for (t = GLOBALS->traces.first; t;
-             t = t->t_next) /* have to nuke string refs so printout is ok! */
-        {
-            if (t->asciivalue) {
-                free_2(t->asciivalue);
-                t->asciivalue = NULL;
-            }
-        }
-
-        for (t = GLOBALS->traces.buffer; t; t = t->t_next) {
-            if (t->asciivalue) {
-                free_2(t->asciivalue);
-                t->asciivalue = NULL;
-            }
-        }
-
-        GwMarker *primary_marker = gw_project_get_primary_marker(GLOBALS->project);
-        GwMarker *baseline_marker = gw_project_get_baseline_marker(GLOBALS->project);
-
-        if (!(gw_marker_is_enabled(baseline_marker) && gw_marker_is_enabled(primary_marker))) {
-            gw_marker_set_enabled(primary_marker, FALSE);
-            update_time_box();
-        }
-        GLOBALS->signalwindow_width_dirty = 1;
-        MaxSignalLength();
-
-        hadj = GTK_ADJUSTMENT(GLOBALS->wave_hslider);
-        gtk_adjustment_set_value(hadj, time1);
-
-        calczoom(estimated);
-        GLOBALS->tims.zoom = estimated;
-
-        fix_wavehadj();
-
-        g_signal_emit_by_name(GTK_ADJUSTMENT(GLOBALS->wave_hslider),
-                              "changed"); /* force zoom update */
-        g_signal_emit_by_name(GTK_ADJUSTMENT(GLOBALS->wave_hslider),
-                              "value_changed"); /* force zoom update */
+        zoom_to_range(time1, time2, TRUE);
 
         DEBUG(printf("Drag Zoom\n"));
+    }
+}
+
+/* shows the time range from time1 to time2 without changing the markers */
+void service_zoom_to_range(GwTime time1, GwTime time2)
+{
+    if (time2 < time1) {
+        GwTime temp = time1;
+        time1 = time2;
+        time2 = temp;
+    }
+
+    if (time1 < GLOBALS->tims.first) {
+        time1 = GLOBALS->tims.first;
+    }
+    if (time2 > GLOBALS->tims.last) {
+        time2 = GLOBALS->tims.last;
+    }
+
+    if (time2 > time1) {
+        zoom_to_range(time1, time2, FALSE);
+        redraw_signals_and_waves();
     }
 }

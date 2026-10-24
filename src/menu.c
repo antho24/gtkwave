@@ -28,6 +28,7 @@
 #include "tcl_helper.h"
 #include "signal_list.h"
 #include "gw-named-marker-dialog.h"
+#include "bookmarks.h"
 #include <cocoa_misc.h>
 #include <assert.h>
 
@@ -195,46 +196,58 @@ static void menu_def_ruler(gpointer null_data, guint callback_action, GtkWidget 
 
 /* marker locking */
 
+/* attaches the primary marker to the previous or next enabled named marker, moving the primary
+ * marker then also moves the attached marker (see update_time_box) */
+static void lock_marker_step(int direction)
+{
+    GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
+    GwMarker *primary_marker = gw_project_get_primary_marker(GLOBALS->project);
+    int num_markers = gw_named_markers_get_number_of_markers(markers);
+    int ent_idx = GLOBALS->named_marker_lock_idx;
+    gboolean success = FALSE;
+
+    if (ent_idx < 0) {
+        ent_idx = direction < 0 ? 0 : -1;
+    }
+
+    for (int i = 0; i < num_markers; i++) {
+        ent_idx = (ent_idx + direction + num_markers) % num_markers;
+
+        if (gw_marker_is_enabled(gw_named_markers_get(markers, ent_idx))) {
+            success = TRUE;
+            break;
+        }
+    }
+
+    if (!success) {
+        if (!gw_marker_is_enabled(primary_marker)) {
+            return;
+        }
+
+        ent_idx = 0;
+        GwMarker *marker = gw_named_markers_get(markers, ent_idx);
+        gw_marker_set_position(marker, gw_marker_get_position(primary_marker));
+        gw_marker_set_enabled(marker, TRUE);
+    }
+
+    GLOBALS->named_marker_lock_idx = ent_idx;
+
+    GwMarker *marker = gw_named_markers_get(markers, ent_idx);
+    gw_marker_set_position(primary_marker, gw_marker_get_position(marker));
+    gw_marker_set_enabled(primary_marker, TRUE);
+
+    update_time_box();
+    GLOBALS->signalwindow_width_dirty = 1;
+    redraw_signals_and_waves();
+}
+
 static void lock_marker_left(gpointer null_data, guint callback_action, GtkWidget *widget)
 {
     (void)null_data;
     (void)callback_action;
     (void)widget;
 
-    g_error("lock_marker_left disabled");
-
-    // int ent_idx = GLOBALS->named_marker_lock_idx;
-    // int i;
-    // int success = 0;
-
-    // if (ent_idx < 0)
-    //     ent_idx = WAVE_NUM_NAMED_MARKERS;
-    // ent_idx--;
-    // if (ent_idx < 0)
-    //     ent_idx = WAVE_NUM_NAMED_MARKERS - 1;
-
-    // for (i = 0; i < WAVE_NUM_NAMED_MARKERS; i++) {
-    //     if (GLOBALS->named_markers[ent_idx] >= 0) {
-    //         success = 1;
-    //         break;
-    //     }
-
-    //     ent_idx--;
-    //     if (ent_idx < 0)
-    //         ent_idx = WAVE_NUM_NAMED_MARKERS - 1;
-    // }
-
-    // if (!success) {
-    //     ent_idx = 0;
-    //     GLOBALS->named_markers[ent_idx] = GLOBALS->tims.marker;
-    // }
-
-    // GLOBALS->named_marker_lock_idx = ent_idx;
-    // GLOBALS->tims.marker = GLOBALS->named_markers[ent_idx];
-
-    // update_time_box();
-    // GLOBALS->signalwindow_width_dirty = 1;
-    // redraw_signals_and_waves();
+    lock_marker_step(-1);
 }
 
 static void lock_marker_right(gpointer null_data, guint callback_action, GtkWidget *widget)
@@ -243,41 +256,7 @@ static void lock_marker_right(gpointer null_data, guint callback_action, GtkWidg
     (void)callback_action;
     (void)widget;
 
-    g_error("lock_marker_right disabled");
-
-    // int ent_idx = GLOBALS->named_marker_lock_idx;
-    // int i;
-    // int success = 0;
-
-    // if (ent_idx < 0)
-    //     ent_idx = -1; /* not really necessary */
-    // ent_idx++;
-    // if (ent_idx > (WAVE_NUM_NAMED_MARKERS - 1))
-    //     ent_idx = 0;
-
-    // for (i = 0; i < WAVE_NUM_NAMED_MARKERS; i++) {
-    //     if (GLOBALS->named_markers[ent_idx] >= 0) {
-    //         success = 1;
-    //         break;
-    //     }
-
-    //     ent_idx++;
-    //     if (ent_idx > (WAVE_NUM_NAMED_MARKERS - 1))
-    //         ent_idx = 0;
-    // }
-
-    // if (!success) {
-    //     ent_idx = 0;
-    //     GLOBALS->named_markers[ent_idx] = GLOBALS->tims.marker;
-    // }
-
-    // GLOBALS->named_marker_lock_idx = ent_idx;
-    // GLOBALS->tims.marker = GLOBALS->named_markers[ent_idx];
-
-    // update_time_box();
-
-    // GLOBALS->signalwindow_width_dirty = 1;
-    // redraw_signals_and_waves();
+    lock_marker_step(1);
 }
 
 static void unlock_marker(gpointer null_data, guint callback_action, GtkWidget *widget)
@@ -2644,6 +2623,8 @@ void menu_markerbox(gpointer null_data, guint callback_action, GtkWidget *widget
     // gtk_widget_show_all(content);
 
     gtk_dialog_run(GTK_DIALOG(dialog));
+    update_time_box();
+    redraw_signals_and_waves();
 
     // markerbox("Markers", G_CALLBACK(menu_markerbox_callback));
 }
@@ -2716,6 +2697,10 @@ static void disable_marker(gpointer data, gpointer user_data)
         return;
     }
 
+    if (gw_marker_is_locked(marker)) {
+        return;
+    }
+
     gw_marker_set_enabled(marker, FALSE);
     gw_marker_set_alias(marker, NULL);
     *dirty = TRUE;
@@ -2754,7 +2739,7 @@ void collect_named_marker(gpointer null_data, guint callback_action, GtkWidget *
     GwNamedMarkers *markers = gw_project_get_named_markers(GLOBALS->project);
     GwMarker *marker = gw_named_markers_find(markers, gw_marker_get_position(primary_marker));
 
-    if (marker != NULL) {
+    if (marker != NULL && !gw_marker_is_locked(marker)) {
         gw_marker_set_enabled(marker, FALSE);
         gw_marker_set_alias(marker, NULL);
         redraw_signals_and_waves();
@@ -4782,6 +4767,19 @@ void menu_show_grid(gpointer null_data, guint callback_action, GtkWidget *widget
     DEBUG(printf("Show Grid\n"));
 }
 
+void menu_show_marker_bar(gpointer null_data, guint callback_action, GtkWidget *widget)
+{
+    (void)null_data;
+    (void)callback_action;
+    (void)widget;
+
+    GLOBALS->show_marker_bar =
+        gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(menu_wlist[WV_MENU_VSMB]));
+    if (GLOBALS->marker_bar != NULL) {
+        gtk_widget_set_visible(GLOBALS->marker_bar, GLOBALS->show_marker_bar);
+    }
+}
+
 /**/
 void menu_show_wave_highlight(gpointer null_data, guint callback_action, GtkWidget *widget)
 {
@@ -5317,6 +5315,16 @@ static gtkwave_mlist_t menu_items[] = {
                 "<Item>"),
     WAVE_GTKIFE("/Time/Page/Page ->", "<Alt>8", service_right_page_marshal, WV_MENU_TPPR, "<Item>"),
     WAVE_GTKIFE("/Time/Page/Page <-", "<Alt>7", service_left_page_marshal, WV_MENU_TPPL, "<Item>"),
+    WAVE_GTKIFE("/Time/Bookmarks/Add Bookmark",
+                "<Shift><Control>B",
+                menu_add_bookmark,
+                WV_MENU_TBMADD,
+                "<Item>"),
+    WAVE_GTKIFE("/Time/Bookmarks/Manage Bookmarks",
+                NULL,
+                menu_manage_bookmarks,
+                WV_MENU_TBMMANAGE,
+                "<Item>"),
     WAVE_GTKIFE("/Markers/Show-Change Marker Data",
                 "<Alt>M",
                 menu_markerbox,
@@ -5373,6 +5381,7 @@ static gtkwave_mlist_t menu_items[] = {
     WAVE_GTKIFE("/View/Fullscreen", "F11", menu_fullscreen, WV_MENU_FULLSCR, "<ToggleItem>"),
     WAVE_GTKIFE("/View/<separator>", NULL, NULL, WV_MENU_SEP8C, "<Separator>"),
     WAVE_GTKIFE("/View/Show Grid", "<Alt>G", menu_show_grid, WV_MENU_VSG, "<ToggleItem>"),
+    WAVE_GTKIFE("/View/Show Marker Bar", NULL, menu_show_marker_bar, WV_MENU_VSMB, "<ToggleItem>"),
     WAVE_GTKIFE("/View/<separator>", NULL, NULL, WV_MENU_SEP9, "<Separator>"),
     WAVE_GTKIFE("/View/Show Wave Highlight",
                 NULL,
@@ -5554,6 +5563,8 @@ void set_menu_toggles(void)
                                    GLOBALS->fullscreen);
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(menu_wlist[WV_MENU_VSG]),
                                    GLOBALS->display_grid);
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(menu_wlist[WV_MENU_VSMB]),
+                                   GLOBALS->show_marker_bar);
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(menu_wlist[WV_MENU_SHW]),
                                    GLOBALS->highlight_wavewindow);
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(menu_wlist[WV_MENU_FILL1]),
@@ -6328,6 +6339,7 @@ GtkWidget *alt_menu_top(GtkWidget *window)
     menu_wlist = calloc(nmenu_items, sizeof(GtkWidget *)); /* calloc, not calloc_2() */
 
     menubar = alt_menu(mi, nmenu_items, menu_wlist, global_accel, TRUE);
+    bookmarks_menu_init(menu_wlist[WV_MENU_TBMMANAGE]);
 
     GLOBALS->regexp_string_menu_c_1 = calloc_2(1, 129);
 

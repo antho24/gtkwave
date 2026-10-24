@@ -611,6 +611,9 @@ static const struct Global globals_base_values = {
     NULL, /* wave_vslider2 622 */
     NULL, /* wave_hslider */
     -1, /* named_marker_lock_idx */
+    NULL, /* marker_bar */
+    1, /* show_marker_bar */
+    NULL, /* bookmarks */
     0, /* which_t_color */
     0, /* fill_in_smaller_rgb_areas_wavewindow_c_1 659 */
     -1, /* prev_markertime */
@@ -940,6 +943,8 @@ void reload_into_new_context_2(void)
     new_globals->signalarea_values = GLOBALS->signalarea_values;
     new_globals->hover_path_label = GLOBALS->hover_path_label;
     new_globals->wavearea = GLOBALS->wavearea;
+    new_globals->marker_bar = GLOBALS->marker_bar;
+    new_globals->show_marker_bar = GLOBALS->show_marker_bar;
 #ifdef WAVE_ALLOW_GTK3_GESTURE_EVENT
     new_globals->wavearea_gesture_swipe = GLOBALS->wavearea_gesture_swipe;
 #endif
