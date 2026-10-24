@@ -124,7 +124,8 @@ char *varxt_fix(char *s)
 }
 
 /* Fill the store model using current SIG_ROOT and FILTER_STR.  */
-/* Is NAME the index of an array element, "[0]" (GHW) or "0" (FST by GHDL)?  */
+/* Is NAME the index of an array element, "[0]" (GHW and NVC) or "0" and "0[7:0]" (FST by
+   GHDL)?  */
 static gboolean is_index_name(const char *name)
 {
     if (name[0] == '[') {
@@ -133,7 +134,7 @@ static gboolean is_index_name(const char *name)
     if (!g_ascii_isdigit(name[0])) {
         return FALSE;
     }
-    for (; *name; name++) {
+    for (; *name && *name != '['; name++) {
         if (!g_ascii_isdigit(*name)) {
             return FALSE;
         }
@@ -141,38 +142,74 @@ static gboolean is_index_name(const char *name)
     return TRUE;
 }
 
-/* Returns the display name of record T: array elements as "[0]".
-   Free with g_free().  */
-static gchar *record_element_name(GwTreeNode *t)
+/* Returns the display name of an element named NAME: array elements as "[0]", other names
+   unchanged.  Free with g_free().  */
+static gchar *element_display_name(const char *name)
 {
-    if (t->name[0] != '[' && is_index_name(t->name)) {
-        return g_strdup_printf("[%s]", t->name);
+    if (name[0] != '[' && is_index_name(name)) {
+        return g_strdup_printf("[%.*s]", (int)strcspn(name, "["), name);
     }
-    return g_strdup(t->name);
+    if (name[0] == '[' && strchr(name, ']') != NULL) {
+        /* "[0][7:0]": the element index without the bit range */
+        return g_strndup(name, strchr(name, ']') - name + 1);
+    }
+    return g_strdup(name);
 }
 
-/* Is T an array of VHDL records (as dumped by GHDL), i.e. a scope containing
-   only records named by their index?  */
-static gboolean is_record_array_scope(GwTreeNode *t)
+static gchar *record_element_name(GwTreeNode *t)
+{
+    return element_display_name(t->name);
+}
+
+static GwSymbol *bitblasted_vector_root(GwFacs *facs, GwTreeNode *t);
+
+/* Is T a vector of bits, e.g. as GHW dumps a std_logic_vector?  */
+static gboolean is_vector_scope(GwTreeNode *t)
+{
+    return t != NULL && t->t_which < 0 && t->child != NULL &&
+           bitblasted_vector_root(gw_dump_file_get_facs(GLOBALS->dump_file), t) != NULL;
+}
+
+/* Is T an array of composite or non-bit elements, i.e. a scope containing only elements named
+   by their index?  Arrays are dumped like this by GHW, by GHDL in FST files and (after the FST
+   loader grouped the flattened elements) by NVC.  */
+static gboolean is_array_scope(GwTreeNode *t)
 {
     if (t == NULL || t->t_which >= 0 || t->child == NULL ||
         t->kind == GW_TREE_KIND_VHDL_ST_RECORD) {
         return FALSE;
     }
     for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
-        if (c->t_which >= 0 || c->child == NULL || c->kind != GW_TREE_KIND_VHDL_ST_RECORD ||
-            !is_index_name(c->name)) {
+        if (!is_index_name(c->name)) {
             return FALSE;
         }
     }
-    return TRUE;
+    return !is_vector_scope(t);
 }
 
-/* Is T a VHDL record scope (e.g. as dumped by NVC) or an array of records?  */
-static gboolean is_record_scope(GwTreeNode *t)
+/* Is T a VHDL record scope (e.g. as dumped by NVC) or an array?  Those are added as a group.  */
+static gboolean is_composite_scope(GwTreeNode *t)
 {
     return t != NULL && t->t_which < 0 && t->child != NULL &&
-           (t->kind == GW_TREE_KIND_VHDL_ST_RECORD || is_record_array_scope(t));
+           (t->kind == GW_TREE_KIND_VHDL_ST_RECORD || is_array_scope(t));
+}
+
+/* Returns the name of vector scope T with its range, e.g. "u[7:0]" for the bits "[7]" to
+   "[0]".  Free with g_free().  */
+static gchar *vector_scope_name(GwTreeNode *t)
+{
+    GwTreeNode *last = t->child;
+    while (last->next != NULL) {
+        last = last->next;
+    }
+
+    const char *msb = t->child->name;
+    const char *lsb = last->name;
+    if (msb[0] != '[' || lsb[0] != '[') {
+        return g_strdup(t->name);
+    }
+
+    return g_strdup_printf("%s[%.*s:%s", t->name, (int)strcspn(msb + 1, "]"), msb + 1, lsb + 1);
 }
 
 /* Direction of record scope T: the direction of its first field, so that a
@@ -242,9 +279,44 @@ void fill_sig_store(void)
         if (i < 0) {
             t_prev = NULL;
 
-            /* records are listed so that they can be added as a whole */
-            int record_dir = is_record_scope(t) ? record_scope_dir(facs, t) : 0;
-            if (is_record_scope(t) && sig_filter_matches(t->name, record_dir)) {
+            /* vectors of bits (GHW) are listed like the other vectors */
+            if (is_vector_scope(t)) {
+                int vector_dir = record_scope_dir(facs, t);
+                gchar *name = vector_scope_name(t);
+                GwNode *bit = gw_facs_get(facs, t->child->t_which)->n;
+                const char *type = bit->vardt != GW_VAR_DATA_TYPE_NONE
+                                       ? gw_var_data_type_to_string(bit->vardt)
+                                       : "vector";
+
+                if (sig_filter_matches(t->name, vector_dir)) {
+                    struct autocoalesce_free_list *a =
+                        calloc_2(1, sizeof(struct autocoalesce_free_list));
+                    a->name = strdup_2(name);
+                    a->next = GLOBALS->afl_treesearch_gtk2_c_1;
+                    GLOBALS->afl_treesearch_gtk2_c_1 = a;
+
+                    gtk_list_store_prepend(GLOBALS->sig_store_treesearch_gtk2_c_1, &iter);
+                    gtk_list_store_set(GLOBALS->sig_store_treesearch_gtk2_c_1,
+                                       &iter,
+                                       NAME_COLUMN,
+                                       a->name,
+                                       TREE_COLUMN,
+                                       t,
+                                       TYPE_COLUMN,
+                                       type,
+                                       DIR_COLUMN,
+                                       gw_var_dir_to_string(vector_dir),
+                                       DTYPE_COLUMN,
+                                       type,
+                                       -1);
+                }
+                g_free(name);
+                continue;
+            }
+
+            /* records and arrays are listed so that they can be added as a whole */
+            int record_dir = is_composite_scope(t) ? record_scope_dir(facs, t) : 0;
+            if (is_composite_scope(t) && sig_filter_matches(t->name, record_dir)) {
                 gtk_list_store_prepend(GLOBALS->sig_store_treesearch_gtk2_c_1, &iter);
                 gtk_list_store_set(GLOBALS->sig_store_treesearch_gtk2_c_1,
                                    &iter,
@@ -253,11 +325,11 @@ void fill_sig_store(void)
                                    TREE_COLUMN,
                                    t,
                                    TYPE_COLUMN,
-                                   is_record_array_scope(t) ? "array" : "record",
+                                   is_array_scope(t) ? "array" : "record",
                                    DIR_COLUMN,
                                    gw_var_dir_to_string(record_dir),
                                    DTYPE_COLUMN,
-                                   is_record_array_scope(t) ? "array" : "record",
+                                   is_array_scope(t) ? "array" : "record",
                                    -1);
             }
             continue;
@@ -970,7 +1042,7 @@ static void add_fac(GwFacs *facs, gint i)
 static gboolean tree_has_record_scope(GwTreeNode *t)
 {
     for (; t != NULL; t = t->next) {
-        if (is_record_scope(t) || (t->t_which < 0 && tree_has_record_scope(t->child))) {
+        if (is_composite_scope(t) || (t->t_which < 0 && tree_has_record_scope(t->child))) {
             return TRUE;
         }
     }
@@ -1080,8 +1152,8 @@ static GwSymbol *bitblasted_vector_root(GwFacs *facs, GwTreeNode *t)
     return root;
 }
 
-/* Adds field T, a signal or a bitblasted vector (with root VEC_ROOT).  */
-static void add_record_field(GwFacs *facs, GwTreeNode *t, GwSymbol *vec_root)
+/* Adds field T, a signal or a bitblasted vector (with root VEC_ROOT), named NAME.  */
+static void add_record_field(GwFacs *facs, GwTreeNode *t, GwSymbol *vec_root, const char *name)
 {
     GwTrace *last = GLOBALS->traces.last;
     gboolean added;
@@ -1100,8 +1172,70 @@ static void add_record_field(GwFacs *facs, GwTreeNode *t, GwSymbol *vec_root)
     /* show the field name only, the enclosing group carries the hierarchy */
     GwTrace *tr = GLOBALS->traces.last;
     if (added && tr->name_full == NULL) {
-        tr->name_full = strdup_2(t->name);
+        tr->name_full = strdup_2(name);
         tr->name = tr->name_full;
+    }
+}
+
+/* Adds a vector of bits (as dumped by GHW) as a single trace.  */
+static void add_vector_scope(GwFacs *facs, GwTreeNode *t)
+{
+    set_s_selected(bitblasted_vector_root(facs, t), 1);
+    add_fac(facs, t->child->t_which);
+}
+
+static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name);
+
+/* Adds element C of a composite named NAME: a signal, a vector or a nested composite.  */
+static void add_composite_element(GwFacs *facs, GwTreeNode *c, const char *name)
+{
+    GwSymbol *vec_root = NULL;
+    if (c->t_which >= 0 || (vec_root = bitblasted_vector_root(facs, c)) != NULL) {
+        add_record_field(facs, c, vec_root, name);
+    } else {
+        add_record_group(facs, c, name);
+    }
+}
+
+/* Is T an array with more than one dimension?  GHW names its elements "[0,0]", "[0,1]", ...  */
+static gboolean is_multidimensional_array(GwTreeNode *t)
+{
+    return is_array_scope(t) && t->child->name[0] == '[' && strchr(t->child->name, ',') != NULL;
+}
+
+/* Adds the elements of the multidimensional array T in rows: "[0,1]" is added as element "[1]"
+   of the nested group "[0]".  */
+static void add_multidimensional_array_elements(GwFacs *facs, SortedTreeNode *elements, gint n)
+{
+    gchar *row = NULL;
+
+    for (gint i = 0; i < n; i++) {
+        GwTreeNode *c = elements[i].t;
+        const char *comma = strchr(c->name, ',');
+        if (comma == NULL) {
+            continue;
+        }
+
+        gchar *element_row = g_strdup_printf("%.*s]", (int)(comma - c->name), c->name);
+        if (row == NULL || strcmp(row, element_row) != 0) {
+            if (row != NULL) {
+                add_record_group_marker(row, TR_GRP_END | TR_CLOSED | TR_COLLAPSED);
+                g_free(row);
+            }
+            row = element_row;
+            add_record_group_marker(row, TR_GRP_BEGIN | TR_CLOSED | TR_RECORD);
+        } else {
+            g_free(element_row);
+        }
+
+        gchar *element_name = g_strdup_printf("[%s", comma + 1);
+        add_composite_element(facs, c, element_name);
+        g_free(element_name);
+    }
+
+    if (row != NULL) {
+        add_record_group_marker(row, TR_GRP_END | TR_CLOSED | TR_COLLAPSED);
+        g_free(row);
     }
 }
 
@@ -1117,14 +1251,13 @@ static void add_record_group(GwFacs *facs, GwTreeNode *t, const char *name)
     if (n > 0) {
         add_record_group_marker(name, TR_GRP_BEGIN | TR_CLOSED | TR_RECORD);
 
-        for (gint i = 0; i < n; i++) {
-            GwTreeNode *c = fields[i].t;
-            GwSymbol *vec_root = NULL;
-            if (c->t_which >= 0 || (vec_root = bitblasted_vector_root(facs, c)) != NULL) {
-                add_record_field(facs, c, vec_root);
-            } else {
+        if (is_multidimensional_array(t)) {
+            add_multidimensional_array_elements(facs, fields, n);
+        } else {
+            for (gint i = 0; i < n; i++) {
+                GwTreeNode *c = fields[i].t;
                 gchar *field_name = record_element_name(c);
-                add_record_group(facs, c, field_name);
+                add_composite_element(facs, c, field_name);
                 g_free(field_name);
             }
         }
@@ -1147,7 +1280,9 @@ static void add_scope_with_records(GwFacs *facs, GwTreeNode *t, const char *pref
         GwTreeNode *c = children[i].t;
         if (c->t_which >= 0) {
             add_fac(facs, c->t_which);
-        } else if (is_record_scope(c)) {
+        } else if (is_vector_scope(c)) {
+            add_vector_scope(facs, c);
+        } else if (is_composite_scope(c)) {
             gchar *name = g_strconcat(prefix, c->name, NULL);
             add_record_group(facs, c, name);
             g_free(name);
@@ -1201,7 +1336,12 @@ static void sig_selection_foreach(GtkTreeModel *model,
 
     GwFacs *facs = gw_dump_file_get_facs(GLOBALS->dump_file);
 
-    if (is_record_scope(sel)) {
+    if (is_vector_scope(sel)) {
+        add_vector_scope(facs, sel);
+        return;
+    }
+
+    if (is_composite_scope(sel)) {
         add_sst_record(facs, sel);
         return;
     }
@@ -1407,7 +1547,7 @@ static void sig_selection_foreach_has_record(GtkTreeModel *model,
     GwTreeNode *sel;
 
     gtk_tree_model_get(model, iter, TREE_COLUMN, &sel, -1);
-    if (is_record_scope(sel)) {
+    if (is_composite_scope(sel) || is_vector_scope(sel)) {
         *(gboolean *)data = TRUE;
     }
 }
@@ -2003,11 +2143,11 @@ static void add_nodes(GwFacs *facs, gint low, gint high)
 {
     GwTreeNode *root = GLOBALS->sst_sig_root_treesearch_gtk2_c_1;
 
-    if (is_record_scope(root) || (root != NULL && tree_has_record_scope(root->child))) {
+    if (is_composite_scope(root) || (root != NULL && tree_has_record_scope(root->child))) {
         const char *prefix =
             GLOBALS->selected_hierarchy_name ? GLOBALS->selected_hierarchy_name : "";
 
-        if (is_record_scope(root)) {
+        if (is_composite_scope(root)) {
             /* the selected hierarchy name includes the record and the delimiter */
             gchar *name = g_strdup(prefix);
             gsize len = strlen(name);

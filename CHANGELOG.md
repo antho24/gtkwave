@@ -54,6 +54,17 @@ of these features.
   another marker within the `cursor_snap` distance, Shift places them freely. The tooltip
   of a marker shows the time to every other marker. The bar can be hidden with
   View → Show Marker Bar.
+- Signals of the VHDL numeric types are shown in the radix of their type when they are added:
+  `signed` and integer signals as signed decimal, `unsigned` as decimal and `ufixed` and
+  `sfixed` as fixed point numbers (e.g. `-1.25`). The types are taken from the type names in
+  FST files written by NVC and from GHW files (GHDL writes no types to FST files). The
+  `vhdl_type_format` rc variable turns this off.
+- VHDL arrays are listed in the signals pane and added as collapsible groups like records,
+  with their elements named `[0]`, `[1]`, ... and the composite value in the group row.
+  Two-dimensional arrays (in GHW files) are added as nested groups, one per row. The
+  elements of arrays that NVC writes as separate signals are grouped into an array in the
+  hierarchy.
+- Vectors in GHW files are listed in the signals pane of their scope, e.g. `u[7:0]`.
 - Named markers can be locked in the marker bar or in the named markers dialog. Locked
   markers are drawn with a solid line and a padlock, can't be dragged or collected and are
   stored in save files (`[markerlock]`).
@@ -110,5 +121,12 @@ of these features.
   again moves the named marker it is attached to.
 - Fixed marker aliases, which were saved as the name of the marker.
 - Fixed the named markers dialog, which removed markers before the visible time range.
+- Fixed enumerations in FST files written by GHDL, which were named with a bit range
+  (`st[7:0]`).
+- Fixed arrays of enumerations and booleans in FST files written by NVC, whose elements lost
+  their index so that only one element was shown.
+- Fixed the data types of FST signals with a VHDL type name (e.g. `real` signals had the
+  data type `integer`).
+- Fixed save files, which enabled the named markers that were never set at time 0.
 
 [Unreleased]: https://github.com/gtkwave/gtkwave/compare/v3.3.116...HEAD

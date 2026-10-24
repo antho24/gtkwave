@@ -45,7 +45,7 @@ sig_bit
 sig_bit_vector[1:0]
     node: sig_bit_vector[1:0]
         vartype: GW_VAR_TYPE_VHDL_SIGNAL
-        vardt: GW_VAR_DATA_TYPE_VHDL_BIT
+        vardt: GW_VAR_DATA_TYPE_VHDL_BIT_VECTOR
         vardir: GW_VAR_DIR_IMPLICIT
         varxt: 2
         extvals: 1
@@ -93,7 +93,7 @@ sig_integer
 sig_real
     node: sig_real
         vartype: GW_VAR_TYPE_VHDL_SIGNAL
-        vardt: GW_VAR_DATA_TYPE_VHDL_INTEGER
+        vardt: GW_VAR_DATA_TYPE_VHDL_REAL
         vardir: GW_VAR_DIR_IMPLICIT
         varxt: 6
         extvals: 1
@@ -131,7 +131,7 @@ sig_std_logic
 sig_std_logic_vector[7:0]
     node: sig_std_logic_vector[7:0]
         vartype: GW_VAR_TYPE_VHDL_SIGNAL
-        vardt: GW_VAR_DATA_TYPE_VHDL_STD_LOGIC
+        vardt: GW_VAR_DATA_TYPE_VHDL_STD_ULOGIC_VECTOR
         vardir: GW_VAR_DIR_IMPLICIT
         varxt: 4
         extvals: 1

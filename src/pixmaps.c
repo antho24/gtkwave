@@ -92,6 +92,7 @@ GdkPixbuf *gw_hierarchy_icons_get(GwHierarchyIcons *self, guint tree_kind)
         case GW_TREE_KIND_VHDL_ST_PROCEDURE:    return self->class; // same as GW_TREE_KIND_VCD_ST_CLASS
         case GW_TREE_KIND_VHDL_ST_RECORD:       return self->record;
         case GW_TREE_KIND_VHDL_ST_GENERATE:     return self->generate;
+        case GW_TREE_KIND_VHDL_ST_ARRAY:        return self->signal;
 
         default:
             return NULL;

@@ -35,6 +35,7 @@ struct _GwFstLoader
     char *synclock_str;
 
     fstEnumHandle queued_xl_enum_filter;
+    GwVarDataType queued_data_type; /* from the VHDL type name of the next variable */
 
     GwStems *stems;
 
@@ -287,6 +288,12 @@ static void handle_supvar(GwFstLoader *self,
     *svt = attr->arg >> FST_SDT_SVT_SHIFT_COUNT;
     *sdt = attr->arg & (FST_SDT_ABS_MAX - 1);
 
+    // the type name is more specific than the data type (NVC writes the element type as the data
+    // type of numeric_std and fixed_pkg vectors)
+    if (attr->name != NULL) {
+        self->queued_data_type = gw_var_data_type_from_vhdl_type_name(attr->name);
+    }
+
     self->has_supplemental_datatypes = TRUE;
     if (*svt != FST_SVT_NONE && *svt != FST_SVT_VHDL_SIGNAL) {
         self->has_supplemental_vartypes = TRUE;
@@ -408,6 +415,129 @@ static void handle_attr(GwFstLoader *self,
     }
 }
 
+/* Splits the name of an element of a flattened VHDL array, "mem[3]" or "mem[3][7:0]", into the
+ * array name and the element index. */
+static gboolean split_array_element_name(const gchar *name, gsize *base_len, const gchar **index)
+{
+    const gchar *lb = strchr(name, '[');
+    if (lb == NULL || lb == name) {
+        return FALSE;
+    }
+
+    const gchar *p = lb + 1;
+    if (*p == '-') {
+        p++;
+    }
+    if (!g_ascii_isdigit(*p)) {
+        return FALSE;
+    }
+    while (g_ascii_isdigit(*p)) {
+        p++;
+    }
+    if (*p != ']' || (p[1] != '\0' && p[1] != '[')) {
+        return FALSE;
+    }
+
+    *base_len = lb - name;
+    *index = lb;
+    return TRUE;
+}
+
+/* Can tree node T be the element of a flattened array? Single bits are left alone, those are
+ * the bits of vectors. */
+static gboolean is_array_element_node(GwFstLoader *self, GwTreeNode *t)
+{
+    gsize base_len;
+    const gchar *index;
+
+    if (!split_array_element_name(t->name, &base_len, &index)) {
+        return FALSE;
+    }
+
+    if (t->t_which < 0) {
+        // an element of an array of records
+        return t->kind == GW_TREE_KIND_VHDL_ST_RECORD && strchr(index, ']')[1] == '\0';
+    }
+
+    GwFac *f = &self->mvlfacs[t->t_which];
+    gboolean is_bit = f->len == 1 && (f->flags & (GW_FAC_FLAG_INTEGER | GW_FAC_FLAG_DOUBLE |
+                                                  GW_FAC_FLAG_STRING)) == GW_FAC_FLAG_BITS;
+    return !is_bit || strchr(index, ']')[1] != '\0';
+}
+
+/* NVC flattens arrays of composite types into signals named "mem[0][7:0]", "mem[1][7:0]", ...
+ * Group the elements of each array into an array scope "mem" with the elements "[0]", "[1]",
+ * ... like the arrays in GHW files. */
+static void group_flattened_arrays(GwFstLoader *self, GwTreeNode *scope)
+{
+    GwTreeNode *head = NULL;
+    GwTreeNode *tail = NULL;
+    GHashTable *arrays = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+    GwTreeNode *next = NULL;
+    for (GwTreeNode *t = scope->child; t != NULL; t = next) {
+        next = t->next;
+        t->next = NULL;
+
+        if (t->child != NULL) {
+            group_flattened_arrays(self, t);
+        }
+
+        GwTreeNode *append = t;
+
+        if (is_array_element_node(self, t)) {
+            gsize base_len = 0;
+            const gchar *index = NULL;
+            split_array_element_name(t->name, &base_len, &index);
+
+            gchar *base = g_strndup(t->name, base_len);
+            GwTreeNode *array = g_hash_table_lookup(arrays, base);
+
+            gchar *element_name = g_strndup(index, strchr(index, ']') - index + 1);
+            GwTreeNode *element = gw_tree_node_new(t->kind, element_name);
+            element->child = t->child;
+            element->t_which = t->t_which;
+            element->t_stem = t->t_stem;
+            element->t_istem = t->t_istem;
+            g_free(element_name);
+
+            if (array == NULL) {
+                array = gw_tree_node_new(GW_TREE_KIND_VHDL_ST_ARRAY, base);
+                array->t_which = WAVE_T_WHICH_UNDEFINED_COMPNAME;
+                array->child = element;
+                g_hash_table_insert(arrays, base, array);
+            } else {
+                GwTreeNode *last = array->child;
+                while (last->next != NULL) {
+                    last = last->next;
+                }
+                last->next = element;
+                g_free(base);
+                append = NULL;
+            }
+
+            // the old node isn't referenced anymore
+            g_free(t);
+
+            if (append != NULL) {
+                append = array;
+            }
+        }
+
+        if (append != NULL) {
+            if (tail == NULL) {
+                head = append;
+            } else {
+                tail->next = append;
+            }
+            tail = append;
+        }
+    }
+
+    scope->child = head;
+    g_hash_table_destroy(arrays);
+}
+
 static struct fstHier *extractNextVar(GwFstLoader *self,
                                       int *msb,
                                       int *lsb,
@@ -421,6 +551,8 @@ static struct fstHier *extractNextVar(GwFstLoader *self,
     guint sxt = 0;
 
     void *fst_reader = self->fst_reader;
+
+    self->queued_data_type = GW_VAR_DATA_TYPE_NONE;
 
     while ((h = fstReaderIterateHier(fst_reader))) {
         switch (h->htyp) {
@@ -811,8 +943,18 @@ static GwDumpFile *gw_fst_loader_load(GwLoader *loader, const char *fname, GErro
             (f->flags & (GW_FAC_FLAG_INTEGER | GW_FAC_FLAG_DOUBLE | GW_FAC_FLAG_STRING)) ==
             GW_FAC_FLAG_BITS;
 
+        // GHDL writes VHDL enumerations as SV enums with the bits of the position, show their
+        // name without the bit range like the enumerations written as strings by NVC
+        gboolean is_vhdl_enum =
+            var->typ == FST_VT_SV_ENUM && fstReaderGetFileType(self->fst_reader) == FST_FT_VHDL;
+
         GwSymbol *s = &sym_block[i];
-        if (f->len > 1 && is_bits) {
+        if (is_vhdl_enum && msb == -1 && lsb == -1) {
+            s->name = gw_tree_builder_get_symbol_name(self->tree_builder, nnam);
+
+            prevsymroot = NULL;
+            prevsym = NULL;
+        } else if (f->len > 1 && is_bits) {
             // preserve 2d in name, but make 1d internally
             if (len_subst) {
                 node_block[i].msi = var->length - 1;
@@ -849,6 +991,14 @@ static GwDumpFile *gw_fst_loader_load(GwLoader *loader, const char *fname, GErro
                     prevsymroot = prevsym = s;
                 }
 
+            } else if (!is_bits && msb != -1 && msb == lsb) {
+                // an array element that is not a bit, e.g. "states[0]" of an array of
+                // enumerations written as strings by NVC: keep the index in the name
+                s->name =
+                    gw_tree_builder_get_symbol_name_with_one_index(self->tree_builder, nnam, msb);
+
+                prevsymroot = NULL;
+                prevsym = NULL;
             } else {
                 s->name = gw_tree_builder_get_symbol_name(self->tree_builder, nnam);
 
@@ -903,6 +1053,9 @@ static GwDumpFile *gw_fst_loader_load(GwLoader *loader, const char *fname, GErro
         n->vardir = fst_var_to_gw_var_dir(var);
         n->varxt = var->sxt_workspace;
         n->vardt = fst_var_to_gw_var_data_type(var);
+        if (self->queued_data_type != GW_VAR_DATA_TYPE_NONE) {
+            n->vardt = self->queued_data_type;
+        }
 
         if (n->vardir != GW_VAR_DIR_IMPLICIT) {
             self->has_nonimplicit_directions = TRUE;
@@ -967,6 +1120,9 @@ static GwDumpFile *gw_fst_loader_load(GwLoader *loader, const char *fname, GErro
     GwTree *tree = gw_tree_new(root);
     gw_tree_graft(tree, self->terminals_chain);
     gw_tree_sort(tree);
+    if (fstReaderGetFileType(self->fst_reader) == FST_FT_VHDL) {
+        group_flattened_arrays(self, gw_tree_get_root(tree));
+    }
 
     // TODO: update splash
     // /* SPLASH */ splash_sync(4, 5);

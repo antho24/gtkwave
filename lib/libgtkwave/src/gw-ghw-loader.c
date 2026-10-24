@@ -539,6 +539,37 @@ static void build_hierarchy_array(GwGhwLoader *self,
     }
 }
 
+/* Stores the VHDL type of the vector T (e.g. numeric_std's unsigned or fixed_pkg's sfixed) in
+ * the nodes of its bits, the vector itself has no node. */
+static void set_vector_data_type(GwGhwLoader *self, union ghw_type *t, GwTreeNode *vector)
+{
+    GwVarDataType data_type = GW_VAR_DATA_TYPE_NONE;
+
+    if (t->sa.name != NULL) {
+        data_type = gw_var_data_type_from_vhdl_type_name(t->sa.name);
+    }
+    if (data_type == GW_VAR_DATA_TYPE_NONE) {
+        union ghw_type *base = ghw_get_base_type(t);
+        if (base != NULL && base->kind == ghdl_rtik_type_array && base->ar.name != NULL) {
+            data_type = gw_var_data_type_from_vhdl_type_name(base->ar.name);
+        }
+    }
+
+    if (data_type != GW_VAR_DATA_TYPE_VHDL_UNSIGNED && data_type != GW_VAR_DATA_TYPE_VHDL_SIGNED &&
+        data_type != GW_VAR_DATA_TYPE_VHDL_UFIXED && data_type != GW_VAR_DATA_TYPE_VHDL_SFIXED) {
+        return;
+    }
+
+    for (GwTreeNode *c = vector->child; c != NULL; c = c->next) {
+        if (c->t_which < 0 || (size_t)c->t_which >= self->h->nbr_sigs) {
+            return;
+        }
+    }
+    for (GwTreeNode *c = vector->child; c != NULL; c = c->next) {
+        self->nxp[c->t_which]->vardt = data_type;
+    }
+}
+
 static GwTreeNode *build_hierarchy_type(GwGhwLoader *self,
                                         union ghw_type *t,
                                         const char *pfx,
@@ -582,6 +613,7 @@ static GwTreeNode *build_hierarchy_type(GwGhwLoader *self,
             build_hierarchy_array(self, t, 0, "", &res, sig);
             r->child = r->next;
             r->next = NULL;
+            set_vector_data_type(self, t, r);
             return r;
         }
 

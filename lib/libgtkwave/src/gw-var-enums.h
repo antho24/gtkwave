@@ -75,12 +75,15 @@ typedef enum
     GW_VAR_DATA_TYPE_VHDL_TIME = 14,
     GW_VAR_DATA_TYPE_VHDL_CHARACTER = 15,
     GW_VAR_DATA_TYPE_VHDL_STRING = 16,
+    GW_VAR_DATA_TYPE_VHDL_UFIXED = 17,
+    GW_VAR_DATA_TYPE_VHDL_SFIXED = 18,
 
-    GW_VAR_DATA_TYPE_MAX = 16
+    GW_VAR_DATA_TYPE_MAX = 18
     /* if this exceeds 63, need to update struct Node's "unsigned vardt : 6" declaration */
 } GwVarDataType;
 
 const gchar *gw_var_data_type_to_string(GwVarDataType self);
+GwVarDataType gw_var_data_type_from_vhdl_type_name(const gchar *name);
 
 typedef enum
 {

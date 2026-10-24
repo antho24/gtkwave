@@ -566,6 +566,13 @@ int f_use_pango_fonts(const char *str)
     return (0);
 }
 
+int f_vhdl_type_format(const char *str)
+{
+    DEBUG(printf("f_vhdl_type_format(\"%s\")\n", str));
+    GLOBALS->vhdl_type_format = atoi_64(str) ? 1 : 0;
+    return (0);
+}
+
 int f_use_roundcaps(const char *str)
 {
     DEBUG(printf("f_use_roundcaps(\"%s\")\n", str));
@@ -854,6 +861,7 @@ static struct rc_entry rcitems[] = {{"accel", f_accel},
                                     {"vcd_preserve_glitches_real", f_vcd_preserve_glitches_real},
                                     {"vcd_warning_filesize", f_vcd_warning_filesize},
                                     {"vector_padding", f_vector_padding},
+                                    {"vhdl_type_format", f_vhdl_type_format},
                                     {"vlist_compression", f_vlist_compression},
                                     {"vlist_prepack", f_vlist_prepack},
                                     {"wave_scrolling", f_wave_scrolling},

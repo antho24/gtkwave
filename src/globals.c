@@ -629,6 +629,7 @@ static const struct Global globals_base_values = {
     0, /* fill_waveform */
     0, /* lz_removal */
     FALSE, /* lz_removal */
+    1, /* vhdl_type_format */
 
     1.0, /* cr_line_width */
     0.5, /* cairo_050_offset */
@@ -1037,6 +1038,7 @@ void reload_into_new_context_2(void)
     new_globals->highlight_wavewindow = GLOBALS->highlight_wavewindow;
     new_globals->fill_waveform = GLOBALS->fill_waveform;
     new_globals->lz_removal = GLOBALS->lz_removal;
+    new_globals->vhdl_type_format = GLOBALS->vhdl_type_format;
     new_globals->use_big_fonts = GLOBALS->use_big_fonts;
     new_globals->use_full_precision = GLOBALS->use_full_precision;
     new_globals->use_frequency_delta = GLOBALS->use_frequency_delta;
@@ -1755,6 +1757,7 @@ static gint context_swapper(GtkWindow *w, GdkEvent *event, void *data)
                             GLOBALS->highlight_wavewindow = g_old->highlight_wavewindow;
                             GLOBALS->fill_waveform = g_old->fill_waveform;
                             GLOBALS->lz_removal = g_old->lz_removal;
+                            GLOBALS->vhdl_type_format = g_old->vhdl_type_format;
                             GLOBALS->disable_mouseover = g_old->disable_mouseover;
                             GLOBALS->clipboard_mouseover = g_old->clipboard_mouseover;
                             GLOBALS->keep_xz_colors = g_old->keep_xz_colors;

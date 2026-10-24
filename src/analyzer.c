@@ -215,6 +215,84 @@ void MarkTraceCursor(GwTrace *t_curs)
     }
 }
 
+/* Returns the right index of the bit range at the end of NAME, e.g. -4 for "sf[3:-4]".  */
+static gboolean get_name_lsb(const char *name, int *lsb)
+{
+    size_t len = strlen(name);
+    if (len == 0 || name[len - 1] != ']') {
+        return FALSE;
+    }
+
+    const char *colon = strrchr(name, ':');
+    const char *bracket = strrchr(name, '[');
+    if (colon == NULL || bracket == NULL || colon < bracket) {
+        return FALSE;
+    }
+
+    *lsb = atoi(colon + 1);
+    return TRUE;
+}
+
+/* Shows signals of the VHDL numeric types in the radix of their type: signed and integer
+ * signals as signed decimal, unsigned as decimal and ufixed/sfixed as fixed point numbers.  */
+static void set_vhdl_type_format(GwTrace *t)
+{
+    GwNode *nd = NULL;
+    int nbits = 0;
+    int lsb = 0;
+    gboolean has_lsb = FALSE;
+
+    if (t->vector) {
+        GwBitVector *vec = t->n.vec;
+        if (vec == NULL || vec->bits == NULL || vec->bits->nnbits < 1) {
+            return;
+        }
+        nd = vec->bits->nodes[0];
+        nbits = vec->nbits;
+        has_lsb = get_name_lsb(vec->bvname, &lsb);
+    } else {
+        nd = t->n.nd;
+        if (nd == NULL || !nd->extvals) {
+            return;
+        }
+        nbits = ABS(nd->msi - nd->lsi) + 1;
+        lsb = nd->lsi;
+        has_lsb = TRUE;
+    }
+
+    if (nd == NULL || nbits < 2 || nbits > 64 || (t->flags & (TR_ENUM | TR_REAL))) {
+        return;
+    }
+
+    TraceFlagsType format = 0;
+    switch (nd->vardt) {
+        case GW_VAR_DATA_TYPE_VHDL_UNSIGNED:
+            format = TR_DEC;
+            break;
+
+        case GW_VAR_DATA_TYPE_VHDL_SIGNED:
+        case GW_VAR_DATA_TYPE_VHDL_INTEGER:
+        case GW_VAR_DATA_TYPE_VHDL_NATURAL:
+        case GW_VAR_DATA_TYPE_VHDL_POSITIVE:
+            format = TR_SIGNED;
+            break;
+
+        case GW_VAR_DATA_TYPE_VHDL_UFIXED:
+        case GW_VAR_DATA_TYPE_VHDL_SFIXED:
+            format = nd->vardt == GW_VAR_DATA_TYPE_VHDL_SFIXED ? TR_SIGNED : TR_DEC;
+            if (has_lsb && lsb < 0 && -lsb < nbits) {
+                format |= TR_FPDECSHIFT;
+                t->t_fpdecshift = -lsb;
+            }
+            break;
+
+        default:
+            return;
+    }
+
+    t->flags = (t->flags & ~TR_NUMMASK) | format | TR_RJUSTIFY;
+}
+
 /*
  * Add a trace to the display...
  */
@@ -247,6 +325,10 @@ static void AddTrace(GwTrace *t)
                 }
             }
         }
+    }
+
+    if (GLOBALS->vhdl_type_format && !(GLOBALS->default_flags & TR_NUMMASK)) {
+        set_vhdl_type_format(t);
     }
 
     if (GLOBALS->default_flags & TR_FTRANSLATED) {

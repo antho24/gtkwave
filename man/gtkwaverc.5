@@ -343,6 +343,11 @@ produces a warning message if the VCD filesize is greater than the argument's si
 \fBvector_padding\fR <\fIvalue\fP>
 indicates the number of pixels of extra whitespace that should be added to any strings for the purpose of calculating text in vectors. Permissible values are 0 to 16 with the default being 4.
 .TP 
+\fBvhdl_type_format\fR <\fIvalue\fP>
+A nonzero value (the default) shows signals in the radix of their VHDL type when they are added:
+signed and integer signals as signed decimal, unsigned signals as decimal and ufixed and sfixed
+signals as fixed point decimal numbers.  A zero value shows them in hexadecimal like other vectors.
+.TP 
 
 \fBvlist_compression\fR <\fIvalue\fP>
 indicates the value to pass to zlib during vlist processing (which is used in the VCD recoder).  \-1 disables compression,

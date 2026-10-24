@@ -70,7 +70,10 @@ typedef enum
     GW_TREE_KIND_VHDL_ST_PROCEDURE,
     GW_TREE_KIND_VHDL_ST_RECORD,
     GW_TREE_KIND_VHDL_ST_PROCESS,
-    GW_TREE_KIND_VHDL_ST_GENERATE
+    GW_TREE_KIND_VHDL_ST_GENERATE,
+
+    /* arrays of composite types that are written as a scope with an element per index */
+    GW_TREE_KIND_VHDL_ST_ARRAY
 } GwTreeKind;
 
 #ifdef WAVE_USE_STRUCT_PACKING

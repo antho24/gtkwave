@@ -185,8 +185,10 @@ void write_save_helper(const char *savnam, FILE *wave)
     guint num_markers = gw_named_markers_get_number_of_markers(markers);
 
     for (guint i = 0; i < num_markers; i++) {
+        // disabled markers are -1, the position of a marker that was never set is 0
         GwMarker *marker = gw_named_markers_get(markers, i);
-        fprintf(wave, " %" GW_TIME_FORMAT, gw_marker_get_position(marker));
+        GwTime position = gw_marker_is_enabled(marker) ? gw_marker_get_position(marker) : -1;
+        fprintf(wave, " %" GW_TIME_FORMAT, position);
     }
     fprintf(wave, "\n");
 

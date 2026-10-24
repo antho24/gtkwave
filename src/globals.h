@@ -623,6 +623,7 @@ struct Global
     char fill_waveform;
     char lz_removal;
     gboolean disable_antialiasing;
+    char vhdl_type_format; /* from rc.c: show VHDL numeric types in their radix */
 
     double cr_line_width;
     double cairo_050_offset;
