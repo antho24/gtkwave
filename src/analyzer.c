@@ -27,6 +27,7 @@
 #include "analyzer.h"
 #include <gtkwave.h>
 #include "record.h"
+#include "expression.h"
 
 void UpdateTraceSelection(GwTrace *t);
 int traverse_vector_nodes(GwTrace *t);
@@ -472,6 +473,56 @@ int AddBlankTrace(char *commentname)
 /*
  * Insert a blank [or comment] trace into the display...
  */
+/*
+ * Returns the outermost expanded signal (a group with the signal as its header, as created by
+ * Edit/Expand) that contains trace T or that T is the header of, NULL if there is none.
+ */
+GwTrace *find_enclosing_expanded_trace(GwTrace *t)
+{
+    GwTrace *outer = NULL;
+
+    if (t == NULL) {
+        return NULL;
+    }
+    if (IsGroupBegin(t) && HasWave(t)) {
+        outer = t;
+    }
+    for (GwTrace *g = t->t_grp; g != NULL; g = g->t_grp) {
+        if (IsGroupBegin(g) && HasWave(g)) {
+            outer = g;
+        }
+    }
+
+    return outer;
+}
+
+/*
+ * Inserts the unlinked trace T behind trace POS, which may be the end of a group.  The
+ * highlighting of the other traces is cleared and T is highlighted.
+ */
+void insert_trace_after(GwTrace *t, GwTrace *pos)
+{
+    TempBuffer tb;
+
+    tb.buffer = GLOBALS->traces.buffer;
+    tb.bufferlast = GLOBALS->traces.bufferlast;
+    tb.buffercount = GLOBALS->traces.buffercount;
+
+    for (GwTrace *u = GLOBALS->traces.first; u != NULL; u = u->t_next) {
+        u->flags &= ~TR_HIGHLIGHT;
+    }
+    pos->flags |= TR_HIGHLIGHT;
+
+    t->t_prev = t->t_next = NULL;
+    GLOBALS->traces.buffer = GLOBALS->traces.bufferlast = t;
+    GLOBALS->traces.buffercount = 1;
+    PasteBuffer();
+
+    GLOBALS->traces.buffer = tb.buffer;
+    GLOBALS->traces.bufferlast = tb.bufferlast;
+    GLOBALS->traces.buffercount = tb.buffercount;
+}
+
 int InsertBlankTrace(char *comment, TraceFlagsType different_flags)
 {
     TempBuffer tb;
@@ -577,7 +628,8 @@ int AddNodeTraceReturn(GwNode *nd, char *aliasname, GwTrace **tret)
         if (GLOBALS->hier_max_level)
             t->name = hier_extract(t->name_full, GLOBALS->hier_max_level);
     } else {
-        if (!GLOBALS->hier_max_level) {
+        /* expressions contain the hierarchy delimiter in their signal names */
+        if (!GLOBALS->hier_max_level || expression_is_node(nd)) {
             t->name = nd->nname;
         } else {
             t->name = hier_extract(nd->nname, GLOBALS->hier_max_level);

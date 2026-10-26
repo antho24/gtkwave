@@ -101,6 +101,7 @@ enum WV_MenuItems
     WV_MENU_SEP3,
     WV_MENU_EIB,
     WV_MENU_EIC,
+    WV_MENU_EIE,
     WV_MENU_EIA,
     WV_MENU_EC,
     WV_MENU_ECY,

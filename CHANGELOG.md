@@ -65,6 +65,18 @@ of these features.
   elements of arrays that NVC writes as separate signals are grouped into an array in the
   hierarchy.
 - Vectors in GHW files are listed in the signals pane of their scope, e.g. `u[7:0]`.
+- Expression traces (Edit → Insert Expression, Ctrl+E) compute a signal from other signals,
+  like the virtual signals of ModelSim, e.g. `valid and ready`, `cnt = 5`, `st = RUN`,
+  `data[7:4]`, `{a, b}` or `a - b`. Expressions use VHDL and C operators (`and or xor not`,
+  `& | ^ ~ && || !`, `= /= == != < <= > >=`, `+ - *`), slices with the index range of the
+  signal, decimal, hexadecimal (`0x1F`, `x"1F"`) and binary (`"0101"`) literals and the names
+  of enumeration values. Signals are named like a trace in the wave window or by their full
+  hierarchical name. Expression traces are inserted behind the highlighted trace (behind an
+  expanded signal when the highlighted trace is one of its bits) and stored in save files
+  (`[expression]`).
+- Expand, Combine Down and Combine Up are in the context menu of the signal list. Combining
+  bits of an expanded signal adds the new vector behind the expanded signal and keeps the
+  bits in it, e.g. to show `u[7:4]` of an expanded `u[7:0]` as a signal of its own.
 - Named markers can be locked in the marker bar or in the named markers dialog. Locked
   markers are drawn with a solid line and a padlock, can't be dragged or collected and are
   stored in save files (`[markerlock]`).

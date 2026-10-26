@@ -29,6 +29,7 @@
 #include "signal_list.h"
 #include "gw-named-marker-dialog.h"
 #include "bookmarks.h"
+#include "expression.h"
 #include <cocoa_misc.h>
 #include <assert.h>
 
@@ -724,7 +725,7 @@ void set_hier_cleanup(GtkWidget *widget, gpointer data, int level)
                     if (GLOBALS->hier_max_level)
                         t->name = hier_extract(t->name, GLOBALS->hier_max_level);
                 } else {
-                    if (!GLOBALS->hier_max_level) {
+                    if (!GLOBALS->hier_max_level || expression_is_node(t->n.nd)) {
                         t->name = t->n.nd->nname;
                     } else {
                         t->name = hier_extract(t->n.nd->nname, GLOBALS->hier_max_level);
@@ -2180,19 +2181,33 @@ GwBitVector *combine_traces(int direction, GwTrace *single_trace_only)
     }
 }
 
-void menu_combine_down(gpointer null_data, guint callback_action, GtkWidget *widget)
+/* the last highlighted trace, where pasted traces are inserted */
+static GwTrace *last_highlighted_trace(void)
 {
-    (void)null_data;
-    (void)callback_action;
-    (void)widget;
+    GwTrace *last = NULL;
+    for (GwTrace *t = GLOBALS->traces.first; t != NULL; t = t->t_next) {
+        if (t->flags & TR_HIGHLIGHT) {
+            last = t;
+        }
+    }
+    return last;
+}
 
+/* Combines the highlighted traces into a vector.  Bits of an expanded signal stay in the
+   expanded signal and the vector is added behind it, other traces are moved into the vector
+   (which can be expanded to show them again).  */
+static void combine_highlighted_traces(int direction, const char *group_name, GtkWidget *widget)
+{
     GwBitVector *v;
 
     if (GLOBALS->dnd_state) {
         dnd_error();
         return;
     } /* don't mess with sigs when dnd active */
-    v = combine_traces(1, NULL); /* down */
+
+    GwTrace *expanded = find_enclosing_expanded_trace(last_highlighted_trace());
+
+    v = combine_traces(direction, NULL);
 
     if (v) {
         GwTrace *t;
@@ -2207,51 +2222,33 @@ void menu_combine_down(gpointer null_data, guint callback_action, GtkWidget *wid
 
         /* t is now the composite signal trace */
 
-        create_group("unused_0", t);
+        if (expanded != NULL && expanded->t_match != NULL) {
+            insert_trace_after(t, expanded->t_match);
+        } else {
+            create_group(group_name, t);
+        }
 
         GLOBALS->signalwindow_width_dirty = 1;
         redraw_signals_and_waves();
 
-        menu_rename(widget, null_data);
-    } else {
+        menu_rename(widget, NULL);
     }
+}
+
+void menu_combine_down(gpointer null_data, guint callback_action, GtkWidget *widget)
+{
+    (void)null_data;
+    (void)callback_action;
+
+    combine_highlighted_traces(1, "unused_0", widget); /* down */
 }
 
 void menu_combine_up(gpointer null_data, guint callback_action, GtkWidget *widget)
 {
     (void)null_data;
     (void)callback_action;
-    (void)widget;
 
-    GwBitVector *v;
-
-    if (GLOBALS->dnd_state) {
-        dnd_error();
-        return;
-    } /* don't mess with sigs when dnd active */
-    v = combine_traces(0, NULL); /* up */
-
-    if (v) {
-        GwTrace *t;
-
-        AddVector(v, NULL);
-        free_2(v->bits->name);
-        v->bits->name = NULL;
-
-        t = GLOBALS->traces.last;
-
-        RemoveTrace(t, 0);
-
-        /* t is now the composite signal trace */
-
-        create_group("unused_1", t);
-
-        GLOBALS->signalwindow_width_dirty = 1;
-        redraw_signals_and_waves();
-
-        menu_rename(widget, null_data);
-    } else {
-    }
+    combine_highlighted_traces(0, "unused_1", widget); /* up */
 }
 
 /**/
@@ -4926,6 +4923,11 @@ static gtkwave_mlist_t menu_items[] = {
                 WV_MENU_EIB,
                 "<Item>"),
     WAVE_GTKIFE("/Edit/Insert Comment", NULL, menu_insert_comment_traces, WV_MENU_EIC, "<Item>"),
+    WAVE_GTKIFE("/Edit/Insert Expression",
+                "<Control>E",
+                menu_insert_expression_trace,
+                WV_MENU_EIE,
+                "<Item>"),
     WAVE_GTKIFE("/Edit/Insert Analog Height Extension",
                 NULL,
                 menu_insert_analog_height_extension,
@@ -5958,6 +5960,12 @@ static gtkwave_mlist_t popmenu_items[] = {
 
     WAVE_GTKIFE("/Insert Blank", NULL, menu_insert_blank_traces, WV_MENU_EIB, "<Item>"),
     WAVE_GTKIFE("/Insert Comment", NULL, menu_insert_comment_traces, WV_MENU_EIC, "<Item>"),
+    WAVE_GTKIFE("/Insert Expression", NULL, menu_insert_expression_trace, WV_MENU_EIE, "<Item>"),
+    WAVE_GTKIFE("/<separator>", NULL, NULL, WV_MENU_SEP2, "<Separator>"),
+    WAVE_GTKIFE("/Expand", NULL, menu_expand, WV_MENU_EE, "<Item>"),
+    WAVE_GTKIFE("/Combine Down", NULL, menu_combine_down, WV_MENU_ECD, "<Item>"),
+    WAVE_GTKIFE("/Combine Up", NULL, menu_combine_up, WV_MENU_ECU, "<Item>"),
+    WAVE_GTKIFE("/<separator>", NULL, NULL, WV_MENU_SEP2, "<Separator>"),
     WAVE_GTKIFE("/Alias Highlighted Trace", NULL, menu_alias, WV_MENU_EAHT, "<Item>"),
     WAVE_GTKIFE("/Remove Highlighted Aliases", NULL, menu_remove_aliases, WV_MENU_ERHA, "<Item>"),
     WAVE_GTKIFE("/<separator>", NULL, NULL, WV_MENU_SEP3, "<Separator>"),

@@ -608,6 +608,9 @@ struct Global
     GtkWidget *marker_bar; /* from wavewindow.c */
     char show_marker_bar; /* from menu.c */
     GPtrArray *bookmarks; /* from bookmarks.c */
+    GHashTable *expression_nodes; /* from expression.c */
+    gchar *expression_name; /* from expression.c */
+    gchar *last_expression; /* from expression.c */
     int which_t_color;
     char fill_in_smaller_rgb_areas_wavewindow_c_1; /* from wavewindow.c 719 */
     GwTime prev_markertime; /* from wavewindow.c */

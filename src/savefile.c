@@ -16,6 +16,7 @@
 #include "record.h"
 #endif
 #include "bookmarks.h"
+#include "expression.h"
 
 #if defined( __linux__ ) || defined(__gnu_hurd__)
 #ifndef _XOPEN_SOURCE
@@ -363,6 +364,8 @@ void write_save_helper(const char *savnam, FILE *wave)
                     }
                 }
                 fprintf(wave, "\n");
+            } else if (!t->vector && expression_is_node(t->n.nd)) {
+                expression_write_save_file(wave, t);
             } else {
                 GwNode *nd = (t->vector && t->n.vec->transaction_cache &&
                               t->n.vec->transaction_cache->transaction_nd)
@@ -1564,6 +1567,8 @@ int parsewavline(char *w, char *alias, int depth)
             g_free(name);
         } else if (strcmp(w2, "bookmark") == 0) {
             bookmarks_parse_save_file_line(w);
+        } else if (strcmp(w2, "expression_name") == 0 || strcmp(w2, "expression") == 0) {
+            expression_parse_save_file_line(w2, w);
         } else if (strcmp(w2, "dumpfile") == 0) {
             /* nothing here currently...only finder/DnD processes these externally */
         } else if (strcmp(w2, "savefile") == 0) {

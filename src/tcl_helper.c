@@ -29,6 +29,7 @@
 #include "tcl_helper.h"
 #include "signal_list.h"
 #include "record.h"
+#include "expression.h"
 
 #if !defined __MINGW32__
 #include <sys/types.h>
@@ -2131,6 +2132,11 @@ char *emit_gtkwave_savefile_formatted_entries_in_tcl_list(GwTrace *t, gboolean u
                 }
 
                 one_entry = make_message("\n");
+                WAVE_OE_ME
+            } else if (!t->vector && expression_is_node(t->n.nd)) {
+                gchar *lines = expression_save_file_lines(t);
+                one_entry = make_message("%s", lines);
+                g_free(lines);
                 WAVE_OE_ME
             } else {
                 GwNode *nd = (t->vector && t->n.vec->transaction_cache &&

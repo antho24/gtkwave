@@ -614,6 +614,9 @@ static const struct Global globals_base_values = {
     NULL, /* marker_bar */
     1, /* show_marker_bar */
     NULL, /* bookmarks */
+    NULL, /* expression_nodes */
+    NULL, /* expression_name */
+    NULL, /* last_expression */
     0, /* which_t_color */
     0, /* fill_in_smaller_rgb_areas_wavewindow_c_1 659 */
     -1, /* prev_markertime */
