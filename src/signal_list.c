@@ -899,22 +899,6 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event)
             }
             return GDK_EVENT_STOP;
         }
-    } else if (state == GW_CONTROL_MASK) {
-        if (event->keyval == GDK_KEY_A) {
-            // CTRL + a: Highlight all traces
-            menu_dataformat_highlight_all(NULL, 0, NULL);
-
-            queue_redraw(signal_list);
-            return GDK_EVENT_STOP;
-        }
-    } else if (state == (GDK_SHIFT_MASK | GW_CONTROL_MASK)) {
-        if (event->keyval == GDK_KEY_A) {
-            // CTRL + SHIFT + A: UnHighlight all traces
-            menu_dataformat_unhighlight_all(NULL, 0, NULL);
-
-            queue_redraw(signal_list);
-            return GDK_EVENT_STOP;
-        }
     } else if (!state) {
         if (event->keyval == GDK_KEY_Left || event->keyval == GDK_KEY_KP_Left) {
             // Left: Find next edge to the left
