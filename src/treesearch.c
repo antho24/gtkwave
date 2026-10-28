@@ -170,6 +170,26 @@ static gboolean is_vector_scope(GwTreeNode *t)
            bitblasted_vector_root(gw_dump_file_get_facs(GLOBALS->dump_file), t) != NULL;
 }
 
+static gboolean is_composite_scope(GwTreeNode *t);
+
+/* Is T a signal or an element of one: a variable, a vector, a record or an array?  */
+static gboolean is_signal_element(GwTreeNode *t)
+{
+    return t->t_which >= 0 || is_vector_scope(t) || is_composite_scope(t);
+}
+
+/* Are all the children of T signals?  A scope containing anything else, e.g. instances, is
+   part of the hierarchy, so that its children are not hidden in a group.  */
+static gboolean has_only_signal_children(GwTreeNode *t)
+{
+    for (GwTreeNode *c = t->child; c != NULL; c = c->next) {
+        if (!is_signal_element(c)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 /* Is T an array of composite or non-bit elements, i.e. a scope containing only elements named
    by their index?  Arrays are dumped like this by GHW, by GHDL in FST files and (after the FST
    loader grouped the flattened elements) by NVC.  */
@@ -184,14 +204,26 @@ static gboolean is_array_scope(GwTreeNode *t)
             return FALSE;
         }
     }
-    return !is_vector_scope(t);
+    return !is_vector_scope(t) && has_only_signal_children(t);
 }
 
 /* Is T a VHDL record scope (e.g. as dumped by NVC) or an array?  Those are added as a group.  */
 static gboolean is_composite_scope(GwTreeNode *t)
 {
-    return t != NULL && t->t_which < 0 && t->child != NULL &&
-           (t->kind == GW_TREE_KIND_VHDL_ST_RECORD || is_array_scope(t));
+    if (t == NULL || t->t_which >= 0 || t->child == NULL) {
+        return FALSE;
+    }
+    if (t->kind == GW_TREE_KIND_VHDL_ST_RECORD) {
+        return has_only_signal_children(t);
+    }
+    return is_array_scope(t);
+}
+
+/* Is T a signal (a vector, record or array) rather than a scope of the hierarchy?  Those are
+   listed in the signals pane and left out of the hierarchy tree.  */
+gboolean treesearch_is_signal_scope(GwTreeNode *t)
+{
+    return is_vector_scope(t) || is_composite_scope(t);
 }
 
 /* Returns the name of vector scope T with its range, e.g. "u[7:0]" for the bits "[7]" to
@@ -315,8 +347,12 @@ void fill_sig_store(void)
             }
 
             /* records and arrays are listed so that they can be added as a whole */
-            int record_dir = is_composite_scope(t) ? record_scope_dir(facs, t) : 0;
-            if (is_composite_scope(t) && sig_filter_matches(t->name, record_dir)) {
+            if (!is_composite_scope(t)) {
+                continue;
+            }
+            int record_dir = record_scope_dir(facs, t);
+            const char *composite_type = is_array_scope(t) ? "array" : "record";
+            if (sig_filter_matches(t->name, record_dir)) {
                 gtk_list_store_prepend(GLOBALS->sig_store_treesearch_gtk2_c_1, &iter);
                 gtk_list_store_set(GLOBALS->sig_store_treesearch_gtk2_c_1,
                                    &iter,
@@ -325,11 +361,11 @@ void fill_sig_store(void)
                                    TREE_COLUMN,
                                    t,
                                    TYPE_COLUMN,
-                                   is_array_scope(t) ? "array" : "record",
+                                   composite_type,
                                    DIR_COLUMN,
                                    gw_var_dir_to_string(record_dir),
                                    DTYPE_COLUMN,
-                                   is_array_scope(t) ? "array" : "record",
+                                   composite_type,
                                    -1);
             }
             continue;

@@ -15,6 +15,7 @@
 #include <config.h>
 #include "globals.h"
 #include "tree.h"
+#include "treesearch.h"
 #include "vcd.h"
 
 enum TreeBuildTypes
@@ -184,7 +185,7 @@ void XXX_maketree2(GtkTreeIter *subtree, GwTreeNode *t, int depth)
             t2->children_in_gui = 1;
         }
 
-        if (t2->child) {
+        if (t2->child && !treesearch_is_signal_scope(t2)) {
             int blacklist = 0;
 
             if (GLOBALS->exclhiermask) {
